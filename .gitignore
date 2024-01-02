@@ -1,0 +1,32 @@
+# Build outputs
+build/
+bin/
+dist/
+*.o
+*.a
+*.so
+*.dylib
+*.elf
+*.efi
+*.img
+*.iso
+*.qcow2
+*.bin
+
+# Private accounting and local state
+.agent-local/
+.gdb_history
+vgcore.*
+
+# Python and tooling cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# OS and editor artifacts
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~

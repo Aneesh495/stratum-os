@@ -1,0 +1,28 @@
+name: Stratum CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld nasm qemu-system-x86 ovmf mtools python3
+
+      - name: Run Doctor Check
+        run: python3 scripts/doctor.py || true
+
+      - name: Run Scope Accounting Check
+        run: python3 scripts/scope_check.py
+
+      - name: Run Documentation and Link Check
+        run: python3 scripts/check_docs.py
