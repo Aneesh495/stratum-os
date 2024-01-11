@@ -1,0 +1,14 @@
+#ifndef STRATUM_KERNEL_UART_H
+#define STRATUM_KERNEL_UART_H
+
+#include <kernel/types.h>
+
+#define COM1_PORT 0x3F8
+
+void uart_init(void);
+void uart_putc(char c);
+void uart_puts(const char *s);
+int  uart_getc_nonblocking(void);
+char uart_getc_blocking(void);
+
+#endif /* STRATUM_KERNEL_UART_H */
