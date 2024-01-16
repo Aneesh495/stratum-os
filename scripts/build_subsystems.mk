@@ -14,9 +14,13 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/core/kprintf.c \
                 kernel/core/boot.c \
                 kernel/core/main.c \
-                kernel/drivers/uart.c
+                kernel/arch/x86_64/gdt.c \
+                kernel/arch/x86_64/idt.c \
+                kernel/drivers/uart.c \
+                kernel/drivers/fb.c
 
-KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S
+KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S \
+                  kernel/arch/x86_64/interrupts.S
 
 KERNEL_COBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(KERNEL_CSRCS))
 KERNEL_ASMOBJS := $(patsubst %.S,$(BUILD_DIR)/%.o,$(KERNEL_ASMSRCS))

@@ -244,6 +244,18 @@ EFI_STATUS EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         }
         initramfs_file->Close(initramfs_file);
     }
+
+    /* Check for cmdline.txt */
+    EFI_FILE_PROTOCOL *cmd_file = NULL;
+    const int16_t cmd_path[] = { '\\', 'c', 'm', 'd', 'l', 'i', 'n', 'e', '.', 't', 'x', 't', 0 };
+    st = root_dir->Open(root_dir, &cmd_file, cmd_path, EFI_FILE_MODE_READ, EFI_FILE_READ_ONLY);
+    if (st == EFI_SUCCESS) {
+        uint64_t cmd_read = sizeof(handoff->cmdline) - 1;
+        cmd_file->Read(cmd_file, &cmd_read, handoff->cmdline);
+        handoff->cmdline[cmd_read] = '\0';
+        cmd_file->Close(cmd_file);
+        efi_print(con, "Loaded boot command line.\n");
+    }
     root_dir->Close(root_dir);
 
     /* 5. Graphics Output Protocol (GOP) */

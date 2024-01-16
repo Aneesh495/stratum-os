@@ -1,14 +1,19 @@
 #include <kernel/kernel.h>
 #include <kernel/uart.h>
+#include <kernel/fb.h>
 #include <kernel/x86_64.h>
 #include <stdarg.h>
 
 void kputchar(char c) {
     uart_putc(c);
+    fb_putchar(c);
 }
 
 void kputs(const char *s) {
-    uart_puts(s);
+    if (!s) return;
+    while (*s) {
+        kputchar(*s++);
+    }
 }
 
 int kprintf(const char *fmt, ...) {

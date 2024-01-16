@@ -138,6 +138,22 @@ char *strrchr(const char *s, int c) {
     return (char *)last;
 }
 
+char *strstr(const char *haystack, const char *needle) {
+    if (!*needle) return (char *)haystack;
+    for (; *haystack; haystack++) {
+        if (*haystack == *needle) {
+            const char *h = haystack;
+            const char *n = needle;
+            while (*h && *n && *h == *n) {
+                h++;
+                n++;
+            }
+            if (!*n) return (char *)haystack;
+        }
+    }
+    return NULL;
+}
+
 static void fmt_number(char **buf, size_t *rem, uint64_t n, int base, bool sign, int width, char pad, bool upper) {
     char tmp[65];
     int idx = 0;

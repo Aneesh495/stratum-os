@@ -1,7 +1,7 @@
 # Stratum OS Build Status
 
 ## Overview
-- Current Phase: P03 CPU State, Traps, and Diagnostics
+- Current Phase: P04 Physical and Virtual Memory
 - Status: in progress
 - Repository: Aneesh495/stratum-os
 - Target Architecture: x86-64 (UEFI boot, QEMU q35, TCG and acceleration)
@@ -11,8 +11,8 @@
 | --- | --- | --- |
 | P01 | Foundation and Toolchain | passed |
 | P02 | Original Boot and UEFI Loader | passed |
-| P03 | CPU State, Traps, and Diagnostics | in progress |
-| P04 | Physical and Virtual Memory | unverified |
+| P03 | CPU State, Traps, and Diagnostics | passed |
+| P04 | Physical and Virtual Memory | in progress |
 | P05 | SMP Startup and Synchronization | unverified |
 | P06 | Preemptive SMP Scheduler | unverified |
 | P07 | User ABI, ELF Loading, Ring 3 | unverified |
@@ -44,17 +44,19 @@
 
 ## Latest Command Results
 - `scripts/doctor.py`: passed (Clang 23.1.2, LLD 23.1.2, NASM 2.16.03, llvm-objcopy, mtools 4.0.49, QEMU 11.1.1, OVMF hash verified)
-- `scripts/scope_check.py`: passed (substantive line tracking active)
+- `scripts/scope_check.py`: passed (1684 substantive kernel lines)
 - `scripts/test_boot.py`: passed (1, 2, 4, 8 vCPUs, 64M, 256M, 1G profiles, 7/7 malformed loader rejections)
+- `scripts/test_cpu_faults.py`: passed (normal boot + deliberate #UD fault decoded with register dump)
 
 ## Current Architectural Decisions
 - ADR-0001: Pinned LLVM 23.1.2 toolchain with Clang and LLD targeting x86_64-unknown-windows for UEFI PE/COFF loader and x86_64-unknown-none-elf for kernel.
 - ADR-0002: Modular monolithic kernel structure with freestanding C17 and x86-64 assembly modules.
 - ADR-0003: Versioned boot handoff contract between UEFI loader and kernel.
 - ADR-0004: Partitioned MBR ESP format for UEFI boot disk with FAT32 partition at 1 MiB offset.
+- ADR-0005: 64-bit GDT/TSS with dedicated IST1 for Double Fault and IST2 for NMI handlers.
 
 ## Unresolved Defects
 - None currently recorded.
 
 ## Next Concrete Action
-- Implement P03: GDT, TSS with dedicated IST stacks, IDT with 32 CPU exceptions and hardware IRQs, register dump formatting, and framebuffer console.
+- Implement P04: Physical Memory Manager (bitmap buddy allocator), Kernel Object Allocator (SLAB with size classes), Virtual Memory Manager (PML4 address spaces, demand paging, COW tracking, guarded stacks).
