@@ -16,6 +16,9 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/core/main.c \
                 kernel/arch/x86_64/gdt.c \
                 kernel/arch/x86_64/idt.c \
+                kernel/mm/pmm.c \
+                kernel/mm/slab.c \
+                kernel/mm/vmm.c \
                 kernel/drivers/uart.c \
                 kernel/drivers/fb.c
 

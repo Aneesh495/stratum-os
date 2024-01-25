@@ -43,7 +43,7 @@ def test_normal_boot():
         line = proc.stdout.readline()
         if line:
             output.append(line)
-            if "Entering kernel loop" in line:
+            if "Entering kernel loop" in line or "Entering kernel idle loop" in line:
                 ok = True
                 break
         elif proc.poll() is not None:

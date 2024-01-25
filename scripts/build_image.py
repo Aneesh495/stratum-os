@@ -81,6 +81,14 @@ def build_boot_disk(out_path, loader_path, kernel_path, initramfs_path):
     run_cmd([mcopy, "-i", part_target, loader_path, "::/EFI/BOOT/BOOTX64.EFI"])
     run_cmd([mcopy, "-i", part_target, kernel_path, "::/stratum.elf"])
 
+    # 6. Add startup.nsh fallback for UEFI shell profiles
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", delete=False) as tf:
+        tf.write("\\EFI\\BOOT\\BOOTX64.EFI\r\n")
+        tf_name = tf.name
+    run_cmd([mcopy, "-o", "-i", part_target, tf_name, "::/startup.nsh"])
+    os.remove(tf_name)
+
     # 6. Copy initramfs if present
     if initramfs_path and os.path.exists(initramfs_path):
         run_cmd([mcopy, "-i", part_target, initramfs_path, "::/initramfs.cpio"])

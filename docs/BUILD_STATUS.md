@@ -1,7 +1,7 @@
 # Stratum OS Build Status
 
 ## Overview
-- Current Phase: P04 Physical and Virtual Memory
+- Current Phase: P05 SMP Startup and Synchronization
 - Status: in progress
 - Repository: Aneesh495/stratum-os
 - Target Architecture: x86-64 (UEFI boot, QEMU q35, TCG and acceleration)
@@ -12,8 +12,8 @@
 | P01 | Foundation and Toolchain | passed |
 | P02 | Original Boot and UEFI Loader | passed |
 | P03 | CPU State, Traps, and Diagnostics | passed |
-| P04 | Physical and Virtual Memory | in progress |
-| P05 | SMP Startup and Synchronization | unverified |
+| P04 | Physical and Virtual Memory | passed |
+| P05 | SMP Startup and Synchronization | in progress |
 | P06 | Preemptive SMP Scheduler | unverified |
 | P07 | User ABI, ELF Loading, Ring 3 | unverified |
 | P08 | Processes, Threads, and IPC | unverified |
@@ -29,8 +29,8 @@
 ## Acceptance Workloads (A01 - A12)
 | Gate | Workload | Status |
 | --- | --- | --- |
-| A01 | Boot and image profiles (1, 2, 4, 8 CPUs; 64M, 256M, 1G) | in progress |
-| A02 | Memory allocation, mapping, COW, and TLB invalidation | unverified |
+| A01 | Boot and image profiles (1, 2, 4, 8 CPUs; 64M, 256M, 1G) | passed |
+| A02 | Memory allocation, mapping, COW, and TLB invalidation | passed |
 | A03 | Scheduling preemption, SMP live threads (500 threads / 32 procs) | unverified |
 | A04 | Lifecycle, fork/exec/wait, threads, syscall boundaries | unverified |
 | A05 | IPC, pipes, message channels, pollable readiness | unverified |
@@ -44,9 +44,10 @@
 
 ## Latest Command Results
 - `scripts/doctor.py`: passed (Clang 23.1.2, LLD 23.1.2, NASM 2.16.03, llvm-objcopy, mtools 4.0.49, QEMU 11.1.1, OVMF hash verified)
-- `scripts/scope_check.py`: passed (1684 substantive kernel lines)
+- `scripts/scope_check.py`: passed (2458 substantive kernel lines)
 - `scripts/test_boot.py`: passed (1, 2, 4, 8 vCPUs, 64M, 256M, 1G profiles, 7/7 malformed loader rejections)
 - `scripts/test_cpu_faults.py`: passed (normal boot + deliberate #UD fault decoded with register dump)
+- `scripts/test_memory.py`: passed (host MM model 2M ops ASan/UBSan + guest PMM/SLAB/VMM 4-level paging)
 
 ## Current Architectural Decisions
 - ADR-0001: Pinned LLVM 23.1.2 toolchain with Clang and LLD targeting x86_64-unknown-windows for UEFI PE/COFF loader and x86_64-unknown-none-elf for kernel.
@@ -54,9 +55,11 @@
 - ADR-0003: Versioned boot handoff contract between UEFI loader and kernel.
 - ADR-0004: Partitioned MBR ESP format for UEFI boot disk with FAT32 partition at 1 MiB offset.
 - ADR-0005: 64-bit GDT/TSS with dedicated IST1 for Double Fault and IST2 for NMI handlers.
+- ADR-0006: Physical Memory Manager dynamically scopes page structure array to conventional RAM extents, maintaining low memory footprints down to 64 MiB profiles.
+- ADR-0007: Virtual Memory Manager establishes 4-level paging with HHDM at 0xFFFF800000000000 and page fault COW resolution.
 
 ## Unresolved Defects
 - None currently recorded.
 
 ## Next Concrete Action
-- Implement P04: Physical Memory Manager (bitmap buddy allocator), Kernel Object Allocator (SLAB with size classes), Virtual Memory Manager (PML4 address spaces, demand paging, COW tracking, guarded stacks).
+- Implement P05: SMP Startup and Synchronization (MADT parsing, LAPIC / IOAPIC initialization, AP trampoline below 1MB, INIT-SIPI-SIPI sequence, per-CPU structures via GS, spinlocks/mutexes).
