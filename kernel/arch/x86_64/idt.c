@@ -2,6 +2,7 @@
 #include <kernel/kernel.h>
 #include <kernel/string.h>
 #include <kernel/x86_64.h>
+#include <kernel/apic.h>
 
 static idt_entry_t g_idt[IDT_ENTRIES];
 static idt_ptr_t g_idt_ptr;
@@ -101,10 +102,16 @@ void exception_dispatch(interrupt_frame_t *frame) {
         /* Hardware IRQ or IPI */
         if (g_irq_handlers[frame->vector]) {
             g_irq_handlers[frame->vector](frame);
-        } else {
-            /* Unhandled IRQ */
+        }
+        /* Send Local APIC EOI for all vector >= 32 except spurious (0xFF) */
+        if (frame->vector != 0xFF) {
+            lapic_eoi();
         }
     }
+}
+
+void idt_load(void) {
+    __asm__ volatile("lidt %0" : : "m"(g_idt_ptr));
 }
 
 void idt_init(void) {
@@ -126,7 +133,7 @@ void idt_init(void) {
     g_idt_ptr.limit = sizeof(g_idt) - 1;
     g_idt_ptr.base = (uint64_t)&g_idt[0];
 
-    __asm__ volatile("lidt %0" : : "m"(g_idt_ptr));
+    idt_load();
 
     kprintf("[CPU] IDT initialized with 256 vector gates (IST1 Double Fault, IST2 NMI)\n");
 }

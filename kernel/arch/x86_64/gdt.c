@@ -95,3 +95,89 @@ void gdt_init(void) {
 void gdt_set_kernel_stack(uint64_t rsp0) {
     g_tss.rsp0 = rsp0;
 }
+
+#include <kernel/smp.h>
+
+void gdt_init_ap(struct cpu *cpu) {
+    if (!cpu) return;
+
+    memset(cpu->gdt_entries, 0, sizeof(cpu->gdt_entries));
+    memset(&cpu->tss, 0, sizeof(cpu->tss));
+
+    /* Entry 0: Null Descriptor */
+    cpu->gdt_entries[0] = 0;
+
+    /* Entry 1 (0x08): Kernel Code 64-bit */
+    uint64_t desc1 = 0;
+    desc1 |= 0xFFFF;
+    desc1 |= ((uint64_t)0x9A) << 40;
+    desc1 |= (((uint64_t)0x02) & 0x0F) << 52;
+    cpu->gdt_entries[1] = desc1;
+
+    /* Entry 2 (0x10): Kernel Data 64-bit */
+    uint64_t desc2 = 0;
+    desc2 |= 0xFFFF;
+    desc2 |= ((uint64_t)0x92) << 40;
+    cpu->gdt_entries[2] = desc2;
+
+    /* Entry 3 (0x18): User Data 64-bit */
+    uint64_t desc3 = 0;
+    desc3 |= 0xFFFF;
+    desc3 |= ((uint64_t)0xF2) << 40;
+    cpu->gdt_entries[3] = desc3;
+
+    /* Entry 4 (0x20): User Code 64-bit */
+    uint64_t desc4 = 0;
+    desc4 |= 0xFFFF;
+    desc4 |= ((uint64_t)0xFA) << 40;
+    desc4 |= (((uint64_t)0x02) & 0x0F) << 52;
+    cpu->gdt_entries[4] = desc4;
+
+    /* Setup AP TSS */
+    cpu->tss.rsp0 = cpu->kernel_stack_top;
+    cpu->tss.ist1 = (uint64_t)&g_double_fault_stack[sizeof(g_double_fault_stack)];
+    cpu->tss.ist2 = (uint64_t)&g_nmi_stack[sizeof(g_nmi_stack)];
+    cpu->tss.iopb_offset = sizeof(tss_t);
+
+    /* Entry 5 & 6 (0x28): TSS descriptor (16 bytes) */
+    uint64_t base = (uint64_t)&cpu->tss;
+    uint32_t limit = sizeof(tss_t) - 1;
+
+    uint64_t tss_low = 0;
+    tss_low |= (limit & 0xFFFF);
+    tss_low |= (base & 0xFFFFFF) << 16;
+    tss_low |= ((uint64_t)0x89) << 40;
+    tss_low |= ((uint64_t)((limit >> 16) & 0x0F)) << 48;
+    tss_low |= ((base >> 24) & 0xFF) << 56;
+
+    cpu->gdt_entries[5] = tss_low;
+    cpu->gdt_entries[6] = (base >> 32);
+
+    cpu->gdt_desc.limit = sizeof(cpu->gdt_entries) - 1;
+    cpu->gdt_desc.base = (uint64_t)&cpu->gdt_entries[0];
+
+    /* Load AP GDT */
+    __asm__ volatile("lgdt %0" : : "m"(cpu->gdt_desc));
+
+    /* Reload segment registers */
+    __asm__ volatile(
+        "pushq $0x08\n\t"
+        "leaq .Lflush_ap_cs(%%rip), %%rax\n\t"
+        "pushq %%rax\n\t"
+        "lretq\n\t"
+        ".Lflush_ap_cs:\n\t"
+        "movw $0x10, %%ax\n\t"
+        "movw %%ax, %%ds\n\t"
+        "movw %%ax, %%es\n\t"
+        "movw %%ax, %%ss\n\t"
+        "movw $0x00, %%ax\n\t"
+        "movw %%ax, %%fs\n\t"
+        "movw %%ax, %%gs\n\t"
+        :
+        :
+        : "rax", "memory"
+    );
+
+    /* Load Task Register */
+    __asm__ volatile("ltr %0" : : "r"((uint16_t)GDT_TSS));
+}

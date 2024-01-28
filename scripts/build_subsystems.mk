@@ -5,6 +5,8 @@ CLANG       ?= $(if $(wildcard $(LLVM_PREFIX)/bin/clang),$(LLVM_PREFIX)/bin/clan
 LD_LLD      ?= $(if $(wildcard /opt/homebrew/bin/ld.lld),/opt/homebrew/bin/ld.lld,ld.lld)
 LLD         ?= $(if $(wildcard /opt/homebrew/bin/lld),/opt/homebrew/bin/lld,lld)
 
+NASM        ?= $(if $(wildcard /opt/homebrew/bin/nasm),/opt/homebrew/bin/nasm,nasm)
+
 BUILD_DIR ?= build
 
 UEFI_SRCS := boot/uefi/main.c boot/uefi/elf.c
@@ -16,14 +18,20 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/core/main.c \
                 kernel/arch/x86_64/gdt.c \
                 kernel/arch/x86_64/idt.c \
+                kernel/arch/x86_64/smp.c \
                 kernel/mm/pmm.c \
                 kernel/mm/slab.c \
                 kernel/mm/vmm.c \
+                kernel/sync/spinlock.c \
+                kernel/sync/mutex.c \
                 kernel/drivers/uart.c \
-                kernel/drivers/fb.c
+                kernel/drivers/fb.c \
+                kernel/drivers/acpi.c \
+                kernel/drivers/apic.c
 
 KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S \
-                  kernel/arch/x86_64/interrupts.S
+                  kernel/arch/x86_64/interrupts.S \
+                  kernel/arch/x86_64/trampoline_blob.S
 
 KERNEL_COBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(KERNEL_CSRCS))
 KERNEL_ASMOBJS := $(patsubst %.S,$(BUILD_DIR)/%.o,$(KERNEL_ASMSRCS))
@@ -59,6 +67,14 @@ $(BUILD_DIR)/BOOTX64.EFI: $(UEFI_OBJS)
 build-kernel: $(BUILD_DIR)/stratum.elf
 
 $(BUILD_DIR)/kernel/%.o: kernel/%.c
+	@mkdir -p $(dir $@)
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/trampoline.bin: kernel/arch/x86_64/trampoline.asm
+	@mkdir -p $(dir $@)
+	$(NASM) -f bin $< -o $@
+
+$(BUILD_DIR)/kernel/arch/x86_64/trampoline_blob.o: kernel/arch/x86_64/trampoline_blob.S $(BUILD_DIR)/trampoline.bin
 	@mkdir -p $(dir $@)
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 

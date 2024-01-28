@@ -39,7 +39,12 @@ typedef struct {
     uint64_t base;
 } __attribute__((packed)) gdt_ptr_t;
 
+typedef gdt_ptr_t gdt_desc_t;
+
+struct cpu;
+
 void gdt_init(void);
+void gdt_init_ap(struct cpu *cpu);
 void gdt_set_kernel_stack(uint64_t rsp0);
 
 #endif /* STRATUM_KERNEL_GDT_H */

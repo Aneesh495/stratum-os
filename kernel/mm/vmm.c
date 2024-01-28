@@ -301,6 +301,8 @@ void vmm_init(const boot_handoff_t *handoff) {
     memset(hhdm_pdpt, 0, PAGE_SIZE);
 
     g_kernel_pml4->entries[PML4_INDEX(HHDM_BASE)] = hhdm_pdpt_phys | PTE_PRESENT | PTE_WRITABLE;
+    /* Identity map low memory using the same PDPT so AP bootstrap trampoline can enable paging */
+    g_kernel_pml4->entries[0] = hhdm_pdpt_phys | PTE_PRESENT | PTE_WRITABLE;
 
     for (uint64_t g = 0; g < 4; g++) {
         uint64_t pd_phys = pmm_alloc_page();

@@ -7,6 +7,9 @@
 #include <kernel/pmm.h>
 #include <kernel/slab.h>
 #include <kernel/vmm.h>
+#include <kernel/smp.h>
+#include <kernel/spinlock.h>
+#include <kernel/mutex.h>
 #include <kernel/x86_64.h>
 
 void kmain(boot_handoff_t *handoff, uint64_t magic) {
@@ -73,7 +76,32 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
     pmm_free_page(test_paddr);
 
     kprintf("[TEST] P04 memory verification tests passed successfully.\n");
-    kprintf("[KERNEL] Phase P04 reached. Entering kernel idle loop.\n");
+
+    /* 10. Initialize Multiprocessor Subsystem (SMP) */
+    smp_init(handoff);
+
+    /* Run P05 Synchronization and SMP Verification Tests */
+    kprintf("[TEST] Running P05 SMP synchronization verification...\n");
+    static spinlock_t test_lock = SPINLOCK_INIT;
+    spin_lock(&test_lock);
+    kassert(!spin_trylock(&test_lock));
+    spin_unlock(&test_lock);
+    kassert(spin_trylock(&test_lock));
+    spin_unlock(&test_lock);
+
+    static mutex_t test_mtx = MUTEX_INIT;
+    mutex_lock(&test_mtx);
+    kassert(!mutex_trylock(&test_mtx));
+    mutex_unlock(&test_mtx);
+    kassert(mutex_trylock(&test_mtx));
+    mutex_unlock(&test_mtx);
+
+    /* Broadcast cross-CPU TLB shootdown IPI */
+    smp_tlb_shootdown(0);
+
+    kprintf("[TEST] P05 SMP synchronization verification passed successfully.\n");
+    kprintf("[KERNEL] Phase P05 reached. Entering kernel idle loop with %u CPU(s) online.\n",
+            smp_get_online_cpus());
 
     /* Deliberate fault injection test for P03 verification */
     if (strstr(handoff->cmdline, "fault=ud2")) {
