@@ -19,6 +19,8 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/arch/x86_64/gdt.c \
                 kernel/arch/x86_64/idt.c \
                 kernel/arch/x86_64/smp.c \
+                kernel/sched/sched.c \
+                kernel/sched/timer.c \
                 kernel/mm/pmm.c \
                 kernel/mm/slab.c \
                 kernel/mm/vmm.c \
@@ -31,6 +33,7 @@ KERNEL_CSRCS := kernel/core/string.c \
 
 KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S \
                   kernel/arch/x86_64/interrupts.S \
+                  kernel/arch/x86_64/switch.S \
                   kernel/arch/x86_64/trampoline_blob.S
 
 KERNEL_COBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(KERNEL_CSRCS))

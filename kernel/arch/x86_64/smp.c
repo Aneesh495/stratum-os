@@ -6,6 +6,7 @@
 #include <kernel/apic.h>
 #include <kernel/acpi.h>
 #include <kernel/kernel.h>
+#include <kernel/sched.h>
 #include <kernel/string.h>
 #include <kernel/x86_64.h>
 
@@ -55,6 +56,11 @@ static void smp_handle_halt(interrupt_frame_t *frame) {
 static void smp_handle_spurious(interrupt_frame_t *frame) {
     (void)frame;
     /* Spurious interrupt requires no action or EOI */
+}
+
+static void smp_handle_resched(interrupt_frame_t *frame) {
+    (void)frame;
+    sched_reschedule();
 }
 
 void smp_send_ipi(uint32_t dest_apic_id, uint8_t vector) {
@@ -118,6 +124,12 @@ void smp_ap_entry(uint64_t cpu_id) {
     /* 4. Initialize Local APIC on this AP */
     lapic_init();
 
+    /* Initialize per-CPU scheduler runqueue */
+    sched_init_cpu((uint32_t)cpu_id);
+
+    /* Initialize Local APIC periodic timer on this AP */
+    lapic_timer_init_ap();
+
     /* 5. Mark CPU online and update global count */
     cpu->is_online = true;
     __atomic_add_fetch(&g_smp_online_cpus, 1, __ATOMIC_SEQ_CST);
@@ -163,15 +175,18 @@ void smp_init(const boot_handoff_t *handoff) {
     /* 4. Register IPI interrupt vectors in IDT */
     register_interrupt_handler(VEC_IPI_TLB, smp_handle_tlb_shootdown);
     register_interrupt_handler(VEC_IPI_HALT, smp_handle_halt);
+    register_interrupt_handler(VEC_IPI_RESCHED, smp_handle_resched);
     register_interrupt_handler(VEC_SPURIOUS, smp_handle_spurious);
 
     /* 5. Initialize I/O APIC */
     ioapic_init();
 
+    /* 6. Calibrate and initialize BSP Local APIC Timer (100 Hz) */
+    lapic_timer_init(100);
+
     /* Check if multi-core topology exists */
     if (g_acpi_info.cpu_count <= 1) {
         kprintf("[SMP] Single processor detected. Running with 1 CPU.\n");
-        lapic_timer_init(100);
         return;
     }
 
@@ -241,9 +256,6 @@ void smp_init(const boot_handoff_t *handoff) {
 
         spin_unlock(&g_smp_boot_lock);
     }
-
-    /* 8. Initialize BSP Local APIC Timer (100 Hz) */
-    lapic_timer_init(100);
 
     kprintf("[SMP] Multiprocessor startup complete: %u CPU(s) online and active.\n",
             g_smp_online_cpus);

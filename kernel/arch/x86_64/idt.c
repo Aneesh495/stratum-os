@@ -99,13 +99,13 @@ void exception_dispatch(interrupt_frame_t *frame) {
               frame->vector, g_exception_names[frame->vector],
               frame->error_code, frame->rip);
     } else {
+        /* Send Local APIC EOI before dispatching handler to permit preemptive context switches */
+        if (frame->vector != 0xFF) {
+            lapic_eoi();
+        }
         /* Hardware IRQ or IPI */
         if (g_irq_handlers[frame->vector]) {
             g_irq_handlers[frame->vector](frame);
-        }
-        /* Send Local APIC EOI for all vector >= 32 except spurious (0xFF) */
-        if (frame->vector != 0xFF) {
-            lapic_eoi();
         }
     }
 }

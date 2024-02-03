@@ -113,6 +113,8 @@ void lapic_send_sipi(uint32_t dest_apic_id, uint8_t vector) {
     lapic_send_ipi(dest_apic_id, ICR_STARTUP | ICR_PHYSICAL | ICR_ASSERT | ICR_EDGE, vector);
 }
 
+static uint32_t g_lapic_timer_init_count = 0;
+
 void lapic_timer_init(uint32_t frequency_hz) {
     if (!g_lapic_regs || frequency_hz == 0) return;
 
@@ -130,6 +132,7 @@ void lapic_timer_init(uint32_t frequency_hz) {
     uint64_t ticks_per_sec = (uint64_t)ticks_10ms * 100ULL;
     uint32_t init_count = (uint32_t)(ticks_per_sec / frequency_hz);
     if (init_count == 0) init_count = 10000;
+    g_lapic_timer_init_count = init_count;
 
     /* Configure periodic timer interrupt */
     lapic_write(LAPIC_LVT_TIMER, LVT_TIMER_PERIODIC | VEC_APIC_TIMER);
@@ -138,6 +141,13 @@ void lapic_timer_init(uint32_t frequency_hz) {
 
     kprintf("[APIC] LAPIC timer calibrated: %u Hz (init_count=%u, ticks/sec=%lu)\n",
             frequency_hz, init_count, ticks_per_sec);
+}
+
+void lapic_timer_init_ap(void) {
+    if (!g_lapic_regs || g_lapic_timer_init_count == 0) return;
+    lapic_write(LAPIC_TIMER_DIV_CONFIG, 0x03);
+    lapic_write(LAPIC_LVT_TIMER, LVT_TIMER_PERIODIC | VEC_APIC_TIMER);
+    lapic_write(LAPIC_TIMER_INIT_COUNT, g_lapic_timer_init_count);
 }
 
 void lapic_timer_stop(void) {

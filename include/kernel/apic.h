@@ -67,6 +67,7 @@ void     lapic_send_ipi(uint32_t dest_apic_id, uint32_t flags, uint8_t vector);
 void     lapic_send_init(uint32_t dest_apic_id);
 void     lapic_send_sipi(uint32_t dest_apic_id, uint8_t vector);
 void     lapic_timer_init(uint32_t frequency_hz);
+void     lapic_timer_init_ap(void);
 void     lapic_timer_stop(void);
 void     pit_delay_ms(uint32_t ms);
 

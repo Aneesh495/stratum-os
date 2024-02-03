@@ -16,6 +16,10 @@ void kputs(const char *s) {
     }
 }
 
+#include <kernel/spinlock.h>
+
+static spinlock_t g_kprintf_lock = SPINLOCK_INIT;
+
 int kprintf(const char *fmt, ...) {
     char buf[1024];
     va_list ap;
@@ -23,7 +27,11 @@ int kprintf(const char *fmt, ...) {
     int len = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
+    uint64_t flags;
+    spin_lock_irqsave(&g_kprintf_lock, &flags);
     kputs(buf);
+    spin_unlock_irqrestore(&g_kprintf_lock, flags);
+
     return len;
 }
 

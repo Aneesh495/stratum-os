@@ -10,7 +10,33 @@
 #include <kernel/smp.h>
 #include <kernel/spinlock.h>
 #include <kernel/mutex.h>
+#include <kernel/sched.h>
 #include <kernel/x86_64.h>
+
+static volatile uint32_t g_thread_test_counter = 0;
+static volatile uint32_t g_threads_completed = 0;
+static spinlock_t g_sched_test_lock = SPINLOCK_INIT;
+
+static void worker_priority(void *arg) {
+    uint64_t id = (uint64_t)arg;
+    for (int i = 0; i < 5; i++) {
+        uint64_t flags;
+        spin_lock_irqsave(&g_sched_test_lock, &flags);
+        g_thread_test_counter++;
+        spin_unlock_irqrestore(&g_sched_test_lock, flags);
+        thread_yield();
+    }
+    kprintf("[SCHED] Worker %lu finished (counter=%u)\n", id, g_thread_test_counter);
+    __atomic_add_fetch(&g_threads_completed, 1, __ATOMIC_SEQ_CST);
+}
+
+static void worker_sleeper(void *arg) {
+    uint64_t id = (uint64_t)arg;
+    kprintf("[SCHED] Sleeper %lu sleeping for 30 ms...\n", id);
+    thread_sleep_ms(30);
+    kprintf("[SCHED] Sleeper %lu woke up at uptime %lu ms\n", id, timer_get_uptime_ms());
+    __atomic_add_fetch(&g_threads_completed, 1, __ATOMIC_SEQ_CST);
+}
 
 void kmain(boot_handoff_t *handoff, uint64_t magic) {
     /* 1. Initialize serial port for early diagnostic output */
@@ -100,7 +126,27 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
     smp_tlb_shootdown(0);
 
     kprintf("[TEST] P05 SMP synchronization verification passed successfully.\n");
-    kprintf("[KERNEL] Phase P05 reached. Entering kernel idle loop with %u CPU(s) online.\n",
+
+    /* 11. Initialize Preemptive SMP Scheduler (P06) */
+    sched_init();
+
+    kprintf("[TEST] Running P06 preemptive SMP scheduler verification...\n");
+
+    thread_create("worker_rt", worker_priority, (void *)1, THREAD_PRIO_REALTIME);
+    thread_create("worker_hi", worker_priority, (void *)2, THREAD_PRIO_HIGH);
+    thread_create("worker_norm", worker_priority, (void *)3, THREAD_PRIO_NORMAL);
+    thread_create("sleeper", worker_sleeper, (void *)4, THREAD_PRIO_NORMAL);
+
+    sti();
+    uint64_t start_ms = timer_get_uptime_ms();
+    while (g_threads_completed < 4 && (timer_get_uptime_ms() - start_ms) < 3000) {
+        hlt();
+    }
+
+    kassert(g_threads_completed == 4);
+    kassert(g_thread_test_counter == 15);
+    kprintf("[TEST] P06 scheduler verification passed successfully.\n");
+    kprintf("[KERNEL] Phase P06 reached. Entering kernel idle loop with %u CPU(s) online.\n",
             smp_get_online_cpus());
 
     /* Deliberate fault injection test for P03 verification */

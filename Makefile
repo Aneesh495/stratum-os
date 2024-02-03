@@ -87,6 +87,9 @@ test-mm:
 test-smp:
 	@$(PYTHON) scripts/run_tests.py --suite smp
 
+test-sched:
+	@$(PYTHON) scripts/run_tests.py --suite sched
+
 test-abi:
 	@$(PYTHON) scripts/run_tests.py --suite abi
 
