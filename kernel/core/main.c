@@ -11,7 +11,19 @@
 #include <kernel/spinlock.h>
 #include <kernel/mutex.h>
 #include <kernel/sched.h>
+#include <kernel/syscall.h>
+#include <kernel/user_elf.h>
 #include <kernel/x86_64.h>
+
+extern const uint8_t g_user_init_binary[];
+extern const uint64_t g_user_init_binary_len;
+
+static void user_process_entry(void *arg) {
+    user_program_t *prog = (user_program_t *)arg;
+    kprintf("[KERNEL] Launching userland process in Ring 3 (RIP=0x%lx, RSP=0x%lx)...\n",
+            prog->entry_point, prog->user_stack_top);
+    user_enter(prog->entry_point, prog->user_stack_top);
+}
 
 static volatile uint32_t g_thread_test_counter = 0;
 static volatile uint32_t g_threads_completed = 0;
@@ -146,7 +158,41 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
     kassert(g_threads_completed == 4);
     kassert(g_thread_test_counter == 15);
     kprintf("[TEST] P06 scheduler verification passed successfully.\n");
-    kprintf("[KERNEL] Phase P06 reached. Entering kernel idle loop with %u CPU(s) online.\n",
+
+    /* 12. Initialize Fast System Call ABI and Safe Usercopy (P07) */
+    syscall_init();
+
+    kprintf("[TEST] Running P07 User ABI & Safe Usercopy verification...\n");
+
+    /* Test 1: Verify copy_from_user recovers gracefully from illegal unmapped address */
+    char fault_scratch[16];
+    int fault_res = copy_from_user(fault_scratch, (const void *)0x0000400000000000ULL, sizeof(fault_scratch));
+    kassert(fault_res == -14);
+    kprintf("[TEST] P07 safe usercopy fault recovery verified (status=%d).\n", fault_res);
+
+    /* Test 2: Load User ELF binary into isolated address space */
+    static user_program_t s_user_prog;
+    int elf_res = user_elf_load(g_user_init_binary, g_user_init_binary_len, &s_user_prog);
+    kassert(elf_res == 0);
+    kassert(s_user_prog.entry_point == 0x400000);
+    kassert(s_user_prog.user_stack_top != 0);
+    kprintf("[TEST] P07 user ELF64 loader verified.\n");
+
+    /* Test 3: Spawn Ring 3 User Process */
+    thread_t *ut = thread_create_user("init_user", user_process_entry, &s_user_prog,
+                                      THREAD_PRIO_NORMAL, s_user_prog.address_space);
+    kassert(ut != NULL);
+
+    /* Await user process completion */
+    uint64_t user_wait_start = timer_get_uptime_ms();
+    while (!g_user_init_finished && (timer_get_uptime_ms() - user_wait_start) < 4000) {
+        hlt();
+    }
+
+    kassert(g_user_init_finished);
+    kassert(g_user_exit_code == 42);
+    kprintf("[TEST] P07 userland Ring 3 execution & syscall verification passed successfully.\n");
+    kprintf("[KERNEL] Phase P07 reached. Entering kernel idle loop with %u CPU(s) online.\n",
             smp_get_online_cpus());
 
     /* Deliberate fault injection test for P03 verification */

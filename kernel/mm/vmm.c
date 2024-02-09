@@ -19,12 +19,17 @@ extern char _kernel_end[];
 
 static page_table_t *get_or_create_table(uint64_t *entry, uint64_t flags) {
     if (*entry & PTE_PRESENT) {
+        if (flags & PTE_USER) {
+            *entry |= PTE_USER;
+        }
         uint64_t paddr = *entry & ~0xFFFULL;
         return (page_table_t *)phys_to_virt(paddr);
     }
 
     uint64_t paddr = pmm_alloc_page();
     if (!paddr) return NULL;
+
+    memset(phys_to_virt(paddr), 0, PAGE_SIZE);
 
     *entry = paddr | flags | PTE_PRESENT | PTE_WRITABLE;
     return (page_table_t *)phys_to_virt(paddr);
@@ -278,6 +283,15 @@ void vmm_page_fault_handler(interrupt_frame_t *frame) {
         }
     }
 
+    /* Check for safe usercopy fault (EFAULT recovery) */
+    extern uint8_t __usercopy_start[];
+    extern uint8_t __usercopy_end[];
+    extern uint8_t __usercopy_fault[];
+    if (frame->rip >= (uint64_t)__usercopy_start && frame->rip < (uint64_t)__usercopy_end) {
+        frame->rip = (uint64_t)__usercopy_fault;
+        return;
+    }
+
     /* Unhandled or illegal page fault */
     kprintf("\n[PAGE FAULT] %s at 0x%016lx from %s (RIP=0x%016lx)\n",
             is_write ? "Write fault" : "Read fault",
@@ -285,7 +299,8 @@ void vmm_page_fault_handler(interrupt_frame_t *frame) {
             is_user ? "User space (Ring 3)" : "Kernel space (Ring 0)",
             frame->rip);
 
-    exception_dispatch(frame);
+    dump_interrupt_frame(frame);
+    panic("Unhandled page fault (CR2=0x%016lx, RIP=0x%016lx)", fault_addr, frame->rip);
 }
 
 void vmm_init(const boot_handoff_t *handoff) {

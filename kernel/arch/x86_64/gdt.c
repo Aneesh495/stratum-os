@@ -92,11 +92,21 @@ void gdt_init(void) {
     kprintf("[CPU] GDT and 64-bit TSS loaded (IST1 Double Fault, IST2 NMI active)\n");
 }
 
-void gdt_set_kernel_stack(uint64_t rsp0) {
-    g_tss.rsp0 = rsp0;
-}
-
 #include <kernel/smp.h>
+
+void gdt_set_kernel_stack(uint64_t rsp0) {
+    cpu_t *cpu = smp_get_current_cpu();
+    if (cpu) {
+        cpu->kernel_stack = rsp0;
+        if (!cpu->is_bsp) {
+            cpu->tss.rsp0 = rsp0;
+        } else {
+            g_tss.rsp0 = rsp0;
+        }
+    } else {
+        g_tss.rsp0 = rsp0;
+    }
+}
 
 void gdt_init_ap(struct cpu *cpu) {
     if (!cpu) return;

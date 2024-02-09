@@ -21,6 +21,8 @@ typedef struct {
 } __attribute__((packed)) smp_mailbox_t;
 
 typedef struct __attribute__((aligned(64))) cpu {
+    uint64_t          kernel_stack;     /* Offset 0: active kernel stack top for syscall */
+    uint64_t          user_rsp;         /* Offset 8: scratch for user rsp during syscall */
     uint32_t          cpu_id;
     uint32_t          lapic_id;
     volatile bool     is_bsp;

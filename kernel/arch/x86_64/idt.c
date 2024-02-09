@@ -61,7 +61,7 @@ int register_interrupt_handler(uint8_t vector, irq_handler_t handler) {
     return 0;
 }
 
-static void dump_interrupt_frame(const interrupt_frame_t *frame) {
+void dump_interrupt_frame(const interrupt_frame_t *frame) {
     uint64_t cr2 = read_cr2();
     uint64_t cr3 = read_cr3();
 
@@ -86,6 +86,12 @@ static void dump_interrupt_frame(const interrupt_frame_t *frame) {
 
 void exception_dispatch(interrupt_frame_t *frame) {
     if (frame->vector < 32) {
+        /* Check if a registered exception handler exists (e.g. vector 14 Page Fault) */
+        if (g_irq_handlers[frame->vector]) {
+            g_irq_handlers[frame->vector](frame);
+            return;
+        }
+
         /* CPU Exception */
         dump_interrupt_frame(frame);
 

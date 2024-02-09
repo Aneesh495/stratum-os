@@ -152,7 +152,7 @@ void sched_init(void) {
     kprintf("[SCHED] Preemptive SMP Scheduler initialized (O(1) priority queues, work stealing enabled)\n");
 }
 
-thread_t *thread_create(const char *name, void (*entry)(void *), void *arg, thread_prio_t prio) {
+thread_t *thread_create_user(const char *name, void (*entry)(void *), void *arg, thread_prio_t prio, pml4_t *as) {
     if (!entry) return NULL;
 
     uint64_t flags;
@@ -177,6 +177,7 @@ thread_t *thread_create(const char *name, void (*entry)(void *), void *arg, thre
     strncpy(t->name, name ? name : "kthread", sizeof(t->name) - 1);
     t->priority = prio;
     t->on_cpu = false;
+    t->address_space = as;
 
     /* Allocate 16 KiB stack */
     uint64_t stack_phys = pmm_alloc_pages(2);
@@ -231,6 +232,10 @@ thread_t *thread_create(const char *name, void (*entry)(void *), void *arg, thre
     }
 
     return t;
+}
+
+thread_t *thread_create(const char *name, void (*entry)(void *), void *arg, thread_prio_t prio) {
+    return thread_create_user(name, entry, arg, prio, NULL);
 }
 
 void sched_reschedule(void) {

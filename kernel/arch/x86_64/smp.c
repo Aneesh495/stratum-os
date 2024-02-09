@@ -7,6 +7,7 @@
 #include <kernel/acpi.h>
 #include <kernel/kernel.h>
 #include <kernel/sched.h>
+#include <kernel/syscall.h>
 #include <kernel/string.h>
 #include <kernel/x86_64.h>
 
@@ -123,6 +124,9 @@ void smp_ap_entry(uint64_t cpu_id) {
 
     /* 4. Initialize Local APIC on this AP */
     lapic_init();
+
+    /* Initialize Fast Syscall MSRs on AP */
+    syscall_init_cpu();
 
     /* Initialize per-CPU scheduler runqueue */
     sched_init_cpu((uint32_t)cpu_id);

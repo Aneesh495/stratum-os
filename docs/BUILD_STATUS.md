@@ -15,8 +15,8 @@
 | P04 | Physical and Virtual Memory | passed |
 | P05 | SMP Startup and Synchronization | passed |
 | P06 | Preemptive SMP Scheduler | passed |
-| P07 | User ABI, ELF Loading, Ring 3 | in progress |
-| P08 | Processes, Threads, and IPC | unverified |
+| P07 | User ABI, ELF Loading, Ring 3 | passed |
+| P08 | Processes, Threads, and IPC | in progress |
 | P09 | PCI and Virtio Hardware I/O | unverified |
 | P10 | VFS and StrataFS Storage | unverified |
 | P11 | Journal Transactions and Crash Recovery | unverified |
@@ -50,6 +50,7 @@
 - `scripts/test_memory.py`: passed (host MM model 2M ops ASan/UBSan + guest PMM/SLAB/VMM 4-level paging)
 - `scripts/test_smp.py`: passed (1, 2, 4, 8 vCPUs with AP trampoline, per-CPU structures via GS, spinlocks/mutexes, TLB shootdown IPI)
 - `scripts/test_sched.py`: passed (1, 2, 4, 8 vCPUs preemptive SMP scheduling, O(1) multi-level priority queues, work stealing, sleep/wake, Gate A03 passed)
+- `scripts/test_abi.py`: passed (1, 2, 4, 8 vCPUs User ABI, safe usercopy fault recovery, ELF64 loader, Ring 3 entry, syscalls SYS_write/SYS_getpid/SYS_nanosleep/SYS_exit)
 
 ## Current Architectural Decisions
 - ADR-0001: Pinned LLVM 23.1.2 toolchain with Clang and LLD targeting x86_64-unknown-windows for UEFI PE/COFF loader and x86_64-unknown-none-elf for kernel.

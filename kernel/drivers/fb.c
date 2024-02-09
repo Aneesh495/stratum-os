@@ -1,4 +1,5 @@
 #include <kernel/fb.h>
+#include <kernel/pmm.h>
 #include <kernel/string.h>
 
 /* Built-in basic 8x16 font table for ASCII characters 32..126 */
@@ -210,8 +211,8 @@ static uint32_t  g_bg_color = 0x00101824; /* Dark blue/slate */
 void fb_init(const boot_handoff_t *handoff) {
     if (!handoff || handoff->fb_base_phys == 0) return;
 
-    /* In direct physical map or identity map */
-    g_fb_base = (uint32_t *)handoff->fb_base_phys;
+    /* In direct physical map (HHDM) */
+    g_fb_base = (uint32_t *)phys_to_virt(handoff->fb_base_phys);
     g_fb_width = handoff->fb_width;
     g_fb_height = handoff->fb_height;
     g_fb_stride = handoff->fb_stride;
