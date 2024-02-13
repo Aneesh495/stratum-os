@@ -103,6 +103,39 @@ user_enter:
     iretq                       /* Enter Ring 3! */
 
 /*
+ * user_enter_regs(const syscall_regs_t *regs)
+ * Restores user register frame from pointer in %rdi and returns to Ring 3.
+ */
+.global user_enter_regs
+user_enter_regs:
+    cli
+    movw $0x1B, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+
+    movq %rdi, %rsp             /* Set stack pointer to regs structure */
+
+    /* Pop general purpose registers */
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %rbp
+    popq %rbx
+    popq %r9
+    popq %r8
+    popq %r10
+    popq %rdx
+    popq %rsi
+    popq %rdi
+    popq %rax
+
+    /* Rest of frame is: rip, cs, rflags, rsp, ss */
+    swapgs
+    iretq
+
+/*
  * Safe usercopy primitives with exception fixup table
  */
 __usercopy_start:

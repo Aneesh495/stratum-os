@@ -46,7 +46,9 @@ typedef _Bool              bool;
 #define NULL ((void*)0)
 #endif
 
+#ifndef offsetof
 #define offsetof(type, member) __builtin_offsetof(type, member)
+#endif
 
 #define container_of(ptr, type, member) ({                      \
     const typeof(((type *)0)->member) *__mptr = (ptr);          \

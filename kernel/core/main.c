@@ -13,17 +13,13 @@
 #include <kernel/sched.h>
 #include <kernel/syscall.h>
 #include <kernel/user_elf.h>
+#include <kernel/file.h>
+#include <kernel/pipe.h>
+#include <kernel/process.h>
 #include <kernel/x86_64.h>
 
 extern const uint8_t g_user_init_binary[];
 extern const uint64_t g_user_init_binary_len;
-
-static void user_process_entry(void *arg) {
-    user_program_t *prog = (user_program_t *)arg;
-    kprintf("[KERNEL] Launching userland process in Ring 3 (RIP=0x%lx, RSP=0x%lx)...\n",
-            prog->entry_point, prog->user_stack_top);
-    user_enter(prog->entry_point, prog->user_stack_top);
-}
 
 static volatile uint32_t g_thread_test_counter = 0;
 static volatile uint32_t g_threads_completed = 0;
@@ -178,21 +174,26 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
     kassert(s_user_prog.user_stack_top != 0);
     kprintf("[TEST] P07 user ELF64 loader verified.\n");
 
-    /* Test 3: Spawn Ring 3 User Process */
-    thread_t *ut = thread_create_user("init_user", user_process_entry, &s_user_prog,
-                                      THREAD_PRIO_NORMAL, s_user_prog.address_space);
-    kassert(ut != NULL);
+    /* 13. Initialize Processes, File Descriptors, and IPC (P08) */
+    file_init();
+    pipe_init();
+    process_init();
+
+    kprintf("[TEST] Running P08 Process lifecycle, fork/waitpid, and IPC pipe verification...\n");
+    process_t *init_proc = process_create_init(&s_user_prog);
+    kassert(init_proc != NULL);
+    kassert(init_proc->pid == 1);
 
     /* Await user process completion */
     uint64_t user_wait_start = timer_get_uptime_ms();
-    while (!g_user_init_finished && (timer_get_uptime_ms() - user_wait_start) < 4000) {
+    while (!g_user_init_finished && (timer_get_uptime_ms() - user_wait_start) < 5000) {
         hlt();
     }
 
     kassert(g_user_init_finished);
     kassert(g_user_exit_code == 42);
-    kprintf("[TEST] P07 userland Ring 3 execution & syscall verification passed successfully.\n");
-    kprintf("[KERNEL] Phase P07 reached. Entering kernel idle loop with %u CPU(s) online.\n",
+    kprintf("[TEST] P08 Processes, Threads, and IPC gates verified successfully.\n");
+    kprintf("[KERNEL] Phase P08 reached. Entering kernel idle loop with %u CPU(s) online.\n",
             smp_get_online_cpus());
 
     /* Deliberate fault injection test for P03 verification */

@@ -350,6 +350,58 @@ void thread_wake(thread_t *thread) {
     }
 }
 
+void wait_queue_init(wait_queue_t *wq) {
+    if (!wq) return;
+    spin_lock_init(&wq->lock);
+    wq->head = NULL;
+}
+
+void wait_queue_wait(wait_queue_t *wq) {
+    if (!wq) return;
+    uint32_t cpu_id = smp_get_cpu_id();
+    thread_t *curr = g_runqueues[cpu_id].current_thread;
+    if (!curr) return;
+
+    uint64_t flags;
+    spin_lock_irqsave(&wq->lock, &flags);
+    curr->wait_next = wq->head;
+    wq->head = curr;
+    spin_unlock_irqrestore(&wq->lock, flags);
+
+    thread_block();
+}
+
+void wait_queue_wake_one(wait_queue_t *wq) {
+    if (!wq) return;
+    uint64_t flags;
+    spin_lock_irqsave(&wq->lock, &flags);
+    thread_t *t = wq->head;
+    if (t) {
+        wq->head = t->wait_next;
+        t->wait_next = NULL;
+        spin_unlock_irqrestore(&wq->lock, flags);
+        thread_wake(t);
+        return;
+    }
+    spin_unlock_irqrestore(&wq->lock, flags);
+}
+
+void wait_queue_wake_all(wait_queue_t *wq) {
+    if (!wq) return;
+    uint64_t flags;
+    spin_lock_irqsave(&wq->lock, &flags);
+    thread_t *list = wq->head;
+    wq->head = NULL;
+    spin_unlock_irqrestore(&wq->lock, flags);
+
+    while (list) {
+        thread_t *next = list->wait_next;
+        list->wait_next = NULL;
+        thread_wake(list);
+        list = next;
+    }
+}
+
 void thread_exit(void) {
     uint32_t cpu_id = smp_get_cpu_id();
     thread_t *curr = g_runqueues[cpu_id].current_thread;

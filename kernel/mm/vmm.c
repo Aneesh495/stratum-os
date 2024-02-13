@@ -22,7 +22,7 @@ static page_table_t *get_or_create_table(uint64_t *entry, uint64_t flags) {
         if (flags & PTE_USER) {
             *entry |= PTE_USER;
         }
-        uint64_t paddr = *entry & ~0xFFFULL;
+        uint64_t paddr = *entry & PTE_ADDR_MASK;
         return (page_table_t *)phys_to_virt(paddr);
     }
 
@@ -71,13 +71,13 @@ int vmm_unmap_page(pml4_t *pml4, uint64_t vaddr) {
     uint64_t pt_idx   = PT_INDEX(vaddr);
 
     if (!(pml4->entries[pml4_idx] & PTE_PRESENT)) return 0;
-    page_table_t *pdpt = (page_table_t *)phys_to_virt(pml4->entries[pml4_idx] & ~0xFFFULL);
+    page_table_t *pdpt = (page_table_t *)phys_to_virt(pml4->entries[pml4_idx] & PTE_ADDR_MASK);
 
     if (!(pdpt->entries[pdpt_idx] & PTE_PRESENT)) return 0;
-    page_table_t *pd = (page_table_t *)phys_to_virt(pdpt->entries[pdpt_idx] & ~0xFFFULL);
+    page_table_t *pd = (page_table_t *)phys_to_virt(pdpt->entries[pdpt_idx] & PTE_ADDR_MASK);
 
     if (!(pd->entries[pd_idx] & PTE_PRESENT)) return 0;
-    page_table_t *pt = (page_table_t *)phys_to_virt(pd->entries[pd_idx] & ~0xFFFULL);
+    page_table_t *pt = (page_table_t *)phys_to_virt(pd->entries[pd_idx] & PTE_ADDR_MASK);
 
     pt->entries[pt_idx] = 0;
     invlpg(vaddr);
@@ -94,18 +94,18 @@ int vmm_get_mapping(pml4_t *pml4, uint64_t vaddr, uint64_t *out_paddr, uint64_t 
     uint64_t pt_idx   = PT_INDEX(vaddr);
 
     if (!(pml4->entries[pml4_idx] & PTE_PRESENT)) return -2;
-    page_table_t *pdpt = (page_table_t *)phys_to_virt(pml4->entries[pml4_idx] & ~0xFFFULL);
+    page_table_t *pdpt = (page_table_t *)phys_to_virt(pml4->entries[pml4_idx] & PTE_ADDR_MASK);
 
     if (!(pdpt->entries[pdpt_idx] & PTE_PRESENT)) return -3;
-    page_table_t *pd = (page_table_t *)phys_to_virt(pdpt->entries[pdpt_idx] & ~0xFFFULL);
+    page_table_t *pd = (page_table_t *)phys_to_virt(pdpt->entries[pdpt_idx] & PTE_ADDR_MASK);
 
     if (!(pd->entries[pd_idx] & PTE_PRESENT)) return -4;
-    page_table_t *pt = (page_table_t *)phys_to_virt(pd->entries[pd_idx] & ~0xFFFULL);
+    page_table_t *pt = (page_table_t *)phys_to_virt(pd->entries[pd_idx] & PTE_ADDR_MASK);
 
     if (!(pt->entries[pt_idx] & PTE_PRESENT)) return -5;
 
-    if (out_paddr) *out_paddr = pt->entries[pt_idx] & ~0xFFFULL;
-    if (out_flags) *out_flags = pt->entries[pt_idx] & 0xFFF;
+    if (out_paddr) *out_paddr = pt->entries[pt_idx] & PTE_ADDR_MASK;
+    if (out_flags) *out_flags = pt->entries[pt_idx] & PTE_FLAGS_MASK;
 
     return 0;
 }
@@ -143,21 +143,21 @@ pml4_t *vmm_clone_address_space(pml4_t *src) {
     for (int pml4_i = 0; pml4_i < 256; pml4_i++) {
         if (!(src->entries[pml4_i] & PTE_PRESENT)) continue;
 
-        page_table_t *src_pdpt = (page_table_t *)phys_to_virt(src->entries[pml4_i] & ~0xFFFULL);
+        page_table_t *src_pdpt = (page_table_t *)phys_to_virt(src->entries[pml4_i] & PTE_ADDR_MASK);
         for (int pdpt_i = 0; pdpt_i < 512; pdpt_i++) {
             if (!(src_pdpt->entries[pdpt_i] & PTE_PRESENT)) continue;
 
-            page_table_t *src_pd = (page_table_t *)phys_to_virt(src_pdpt->entries[pdpt_i] & ~0xFFFULL);
+            page_table_t *src_pd = (page_table_t *)phys_to_virt(src_pdpt->entries[pdpt_i] & PTE_ADDR_MASK);
             for (int pd_i = 0; pd_i < 512; pd_i++) {
                 if (!(src_pd->entries[pd_i] & PTE_PRESENT)) continue;
 
-                page_table_t *src_pt = (page_table_t *)phys_to_virt(src_pd->entries[pd_i] & ~0xFFFULL);
+                page_table_t *src_pt = (page_table_t *)phys_to_virt(src_pd->entries[pd_i] & PTE_ADDR_MASK);
                 for (int pt_i = 0; pt_i < 512; pt_i++) {
                     uint64_t pte = src_pt->entries[pt_i];
                     if (!(pte & PTE_PRESENT)) continue;
 
-                    uint64_t paddr = pte & ~0xFFFULL;
-                    uint64_t flags = pte & 0xFFF;
+                    uint64_t paddr = pte & PTE_ADDR_MASK;
+                    uint64_t flags = pte & PTE_FLAGS_MASK;
 
                     /* If page is writable, convert to COW (read-only + PTE_COW) */
                     if (flags & PTE_WRITABLE) {
@@ -197,19 +197,19 @@ void vmm_destroy_address_space(pml4_t *pml4) {
     for (int pml4_i = 0; pml4_i < 256; pml4_i++) {
         if (!(pml4->entries[pml4_i] & PTE_PRESENT)) continue;
 
-        page_table_t *pdpt = (page_table_t *)phys_to_virt(pml4->entries[pml4_i] & ~0xFFFULL);
+        page_table_t *pdpt = (page_table_t *)phys_to_virt(pml4->entries[pml4_i] & PTE_ADDR_MASK);
         for (int pdpt_i = 0; pdpt_i < 512; pdpt_i++) {
             if (!(pdpt->entries[pdpt_i] & PTE_PRESENT)) continue;
 
-            page_table_t *pd = (page_table_t *)phys_to_virt(pdpt->entries[pdpt_i] & ~0xFFFULL);
+            page_table_t *pd = (page_table_t *)phys_to_virt(pdpt->entries[pdpt_i] & PTE_ADDR_MASK);
             for (int pd_i = 0; pd_i < 512; pd_i++) {
                 if (!(pd->entries[pd_i] & PTE_PRESENT)) continue;
 
-                page_table_t *pt = (page_table_t *)phys_to_virt(pd->entries[pd_i] & ~0xFFFULL);
+                page_table_t *pt = (page_table_t *)phys_to_virt(pd->entries[pd_i] & PTE_ADDR_MASK);
                 for (int pt_i = 0; pt_i < 512; pt_i++) {
                     uint64_t pte = pt->entries[pt_i];
                     if (pte & PTE_PRESENT) {
-                        uint64_t paddr = pte & ~0xFFFULL;
+                        uint64_t paddr = pte & PTE_ADDR_MASK;
                         pmm_page_release(paddr);
                     }
                 }

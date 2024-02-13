@@ -45,10 +45,17 @@ typedef struct thread {
     uint64_t         saved_rsp;
 
     pml4_t          *address_space; /* CR3 address space */
+    struct process  *process;       /* Owning process */
 
     struct thread   *next;          /* Queue link */
     struct thread   *global_next;   /* Global thread table link */
+    struct thread   *wait_next;     /* Wait queue link */
 } thread_t;
+
+typedef struct wait_queue {
+    spinlock_t     lock;
+    struct thread *head;
+} wait_queue_t;
 
 typedef struct {
     spinlock_t lock;
@@ -72,6 +79,11 @@ void      thread_yield(void);
 void      thread_sleep_ms(uint32_t ms);
 void      thread_block(void);
 void      thread_wake(thread_t *thread);
+
+void      wait_queue_init(wait_queue_t *wq);
+void      wait_queue_wait(wait_queue_t *wq);
+void      wait_queue_wake_one(wait_queue_t *wq);
+void      wait_queue_wake_all(wait_queue_t *wq);
 
 void      sched_tick(interrupt_frame_t *frame);
 void      sched_reschedule(void);

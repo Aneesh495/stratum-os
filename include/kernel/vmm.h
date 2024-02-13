@@ -16,6 +16,8 @@
 #define PTE_GLOBAL    (1ULL << 8)
 #define PTE_COW       (1ULL << 9)   /* Software Copy-On-Write bit */
 #define PTE_NX        (1ULL << 63)
+#define PTE_ADDR_MASK 0x000FFFFFFFFFF000ULL
+#define PTE_FLAGS_MASK (0x0000000000000FFFULL | PTE_NX)
 
 #define PML4_INDEX(va) (((va) >> 39) & 0x1FF)
 #define PDPT_INDEX(va) (((va) >> 30) & 0x1FF)

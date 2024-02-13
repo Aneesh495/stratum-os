@@ -41,6 +41,7 @@ int copy_from_user(void *dst_k, const void *src_u, size_t n);
 
 /* Transition to Ring 3 */
 void user_enter(uint64_t entry_rip, uint64_t user_rsp) __attribute__((noreturn));
+void user_enter_regs(const syscall_regs_t *regs) __attribute__((noreturn));
 
 extern volatile bool g_user_init_finished;
 extern volatile int  g_user_exit_code;

@@ -202,8 +202,8 @@ void pmm_free_page(uint64_t paddr) {
         return;
     }
 
-    if (g_pages[pfn].refcount > 1) {
-        g_pages[pfn].refcount--;
+    uint32_t prev = __sync_fetch_and_sub(&g_pages[pfn].refcount, 1);
+    if (prev > 1) {
         return;
     }
 
@@ -229,13 +229,7 @@ void pmm_page_retain(uint64_t paddr) {
 }
 
 void pmm_page_release(uint64_t paddr) {
-    uint64_t pfn = paddr / PAGE_SIZE;
-    if (pfn < g_num_pages && g_pages) {
-        uint32_t prev = __sync_fetch_and_sub(&g_pages[pfn].refcount, 1);
-        if (prev <= 1) {
-            pmm_free_page(paddr);
-        }
-    }
+    pmm_free_page(paddr);
 }
 
 uint32_t pmm_page_refcount(uint64_t paddr) {

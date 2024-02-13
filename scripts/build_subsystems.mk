@@ -18,6 +18,9 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/core/main.c \
                 kernel/core/syscall.c \
                 kernel/core/user_elf.c \
+                kernel/core/file.c \
+                kernel/core/process.c \
+                kernel/ipc/pipe.c \
                 kernel/arch/x86_64/gdt.c \
                 kernel/arch/x86_64/idt.c \
                 kernel/arch/x86_64/smp.c \

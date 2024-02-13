@@ -4,6 +4,9 @@
 #include <kernel/sched.h>
 #include <kernel/vmm.h>
 #include <kernel/x86_64.h>
+#include <kernel/process.h>
+#include <kernel/file.h>
+#include <kernel/pipe.h>
 #include <shared/syscall_nums.h>
 #include <shared/errno.h>
 
@@ -47,35 +50,177 @@ void syscall_init(void) {
     kprintf("[SYSCALL] Fast syscall/sysret MSRs configured (Ring 3 user ABI active)\n");
 }
 
-static int64_t sys_write_handler(int fd, const void *u_buf, size_t count) {
+volatile bool g_user_init_finished = false;
+volatile int  g_user_exit_code = 0;
+
+static int64_t sys_read_impl(int fd, void *u_buf, size_t count) {
     if (!is_user_range_valid(u_buf, count)) {
         return -STRATUM_EFAULT;
     }
 
-    if (fd != 1 && fd != 2) {
-        return -STRATUM_EBADF;
+    process_t *proc = process_get_current();
+    if (!proc) return -STRATUM_ESRCH;
+
+    file_t *f = fd_get(&proc->fds, fd);
+    if (!f) return -STRATUM_EBADF;
+
+    if (!f->ops || !f->ops->read) {
+        file_close(f);
+        return -STRATUM_EINVAL;
     }
 
-    char kbuf[256];
-    size_t remaining = count;
-    const char *src = (const char *)u_buf;
+    char kbuf[512];
+    size_t to_read = (count > sizeof(kbuf)) ? sizeof(kbuf) : count;
+    int64_t res = f->ops->read(f, kbuf, to_read);
 
-    while (remaining > 0) {
-        size_t chunk = (remaining > sizeof(kbuf) - 1) ? (sizeof(kbuf) - 1) : remaining;
-        if (copy_from_user(kbuf, src, chunk) != 0) {
+    if (res > 0) {
+        if (copy_to_user(u_buf, kbuf, (size_t)res) != 0) {
+            file_close(f);
             return -STRATUM_EFAULT;
         }
-        kbuf[chunk] = '\0';
-        kputs(kbuf);
-        src += chunk;
-        remaining -= chunk;
     }
 
-    return (int64_t)count;
+    file_close(f);
+    return res;
 }
 
-volatile bool g_user_init_finished = false;
-volatile int  g_user_exit_code = 0;
+static int64_t sys_write_impl(int fd, const void *u_buf, size_t count) {
+    if (!is_user_range_valid(u_buf, count)) {
+        return -STRATUM_EFAULT;
+    }
+
+    process_t *proc = process_get_current();
+    if (!proc) return -STRATUM_ESRCH;
+
+    file_t *f = fd_get(&proc->fds, fd);
+    if (!f) return -STRATUM_EBADF;
+
+    if (!f->ops || !f->ops->write) {
+        file_close(f);
+        return -STRATUM_EINVAL;
+    }
+
+    char kbuf[512];
+    size_t written = 0;
+    const char *src = (const char *)u_buf;
+
+    while (written < count) {
+        size_t chunk = (count - written > sizeof(kbuf)) ? sizeof(kbuf) : (count - written);
+        if (copy_from_user(kbuf, src + written, chunk) != 0) {
+            file_close(f);
+            return -STRATUM_EFAULT;
+        }
+
+        int64_t res = f->ops->write(f, kbuf, chunk);
+        if (res < 0) {
+            file_close(f);
+            return (written > 0) ? (int64_t)written : res;
+        }
+        written += (size_t)res;
+        if ((size_t)res < chunk) break;
+    }
+
+    file_close(f);
+    return (int64_t)written;
+}
+
+static int64_t sys_pipe_impl(int *u_pipefd) {
+    if (!is_user_range_valid(u_pipefd, 2 * sizeof(int))) {
+        return -STRATUM_EFAULT;
+    }
+
+    process_t *proc = process_get_current();
+    if (!proc) return -STRATUM_ESRCH;
+
+    file_t *rf = NULL, *wf = NULL;
+    int res = pipe_create(&rf, &wf);
+    if (res != 0) return res;
+
+    int rfd = fd_alloc(&proc->fds, rf);
+    if (rfd < 0) {
+        file_close(rf);
+        file_close(wf);
+        return rfd;
+    }
+
+    int wfd = fd_alloc(&proc->fds, wf);
+    if (wfd < 0) {
+        fd_close(&proc->fds, rfd);
+        file_close(wf);
+        return wfd;
+    }
+
+    int k_fds[2] = { rfd, wfd };
+    if (copy_to_user(u_pipefd, k_fds, sizeof(k_fds)) != 0) {
+        fd_close(&proc->fds, rfd);
+        fd_close(&proc->fds, wfd);
+        return -STRATUM_EFAULT;
+    }
+
+    return 0;
+}
+
+static int64_t sys_poll_impl(struct pollfd *u_fds, uint32_t nfds, int timeout_ms) {
+    if (nfds > 32) return -STRATUM_EINVAL;
+    if (!is_user_range_valid(u_fds, nfds * sizeof(struct pollfd))) {
+        return -STRATUM_EFAULT;
+    }
+
+    process_t *proc = process_get_current();
+    if (!proc) return -STRATUM_ESRCH;
+
+    struct pollfd k_fds[32];
+    if (copy_from_user(k_fds, u_fds, nfds * sizeof(struct pollfd)) != 0) {
+        return -STRATUM_EFAULT;
+    }
+
+    uint64_t start_ms = timer_get_uptime_ms();
+
+    while (1) {
+        int ready_count = 0;
+
+        for (uint32_t i = 0; i < nfds; i++) {
+            k_fds[i].revents = 0;
+            if (k_fds[i].fd < 0) continue;
+
+            file_t *f = fd_get(&proc->fds, k_fds[i].fd);
+            if (!f) {
+                k_fds[i].revents = POLLNVAL;
+                ready_count++;
+                continue;
+            }
+
+            if (f->ops && f->ops->poll) {
+                int rev = f->ops->poll(f, (uint32_t)k_fds[i].events);
+                k_fds[i].revents = (int16_t)rev;
+                if (rev != 0) {
+                    ready_count++;
+                }
+            }
+            file_close(f);
+        }
+
+        if (ready_count > 0) {
+            copy_to_user(u_fds, k_fds, nfds * sizeof(struct pollfd));
+            return ready_count;
+        }
+
+        if (timeout_ms == 0) {
+            copy_to_user(u_fds, k_fds, nfds * sizeof(struct pollfd));
+            return 0;
+        }
+
+        if (timeout_ms > 0) {
+            uint64_t elapsed = timer_get_uptime_ms() - start_ms;
+            if (elapsed >= (uint64_t)timeout_ms) {
+                copy_to_user(u_fds, k_fds, nfds * sizeof(struct pollfd));
+                return 0;
+            }
+        }
+
+        thread_sleep_ms(2);
+    }
+}
 
 int64_t syscall_dispatch(syscall_regs_t *regs) {
     if (!regs) return -STRATUM_EINVAL;
@@ -85,26 +230,52 @@ int64_t syscall_dispatch(syscall_regs_t *regs) {
     switch (nr) {
     case SYS_exit: {
         int status = (int)regs->rdi;
-        kprintf("[USER] Process exited with code %d\n", status);
-        g_user_exit_code = status;
-        g_user_init_finished = true;
-        thread_exit();
+        process_exit(status);
         return 0;
     }
 
-    case SYS_write: {
-        return sys_write_handler((int)regs->rdi, (const void *)regs->rsi, (size_t)regs->rdx);
+    case SYS_fork: {
+        return process_fork(regs);
     }
 
-    case SYS_read: {
-        /* Early stdin stub */
-        return 0;
+    case SYS_waitpid: {
+        int32_t pid = (int32_t)regs->rdi;
+        int *status = (int *)regs->rsi;
+        int options = (int)regs->rdx;
+        return process_waitpid(pid, status, options);
     }
 
     case SYS_getpid: {
-        uint32_t cpu_id = smp_get_cpu_id();
-        runqueue_t *rq = &g_runqueues[cpu_id];
-        return rq->current_thread ? (int64_t)rq->current_thread->tid : 1;
+        process_t *p = process_get_current();
+        return p ? (int64_t)p->pid : 1;
+    }
+
+    case SYS_read: {
+        return sys_read_impl((int)regs->rdi, (void *)regs->rsi, (size_t)regs->rdx);
+    }
+
+    case SYS_write: {
+        return sys_write_impl((int)regs->rdi, (const void *)regs->rsi, (size_t)regs->rdx);
+    }
+
+    case SYS_close: {
+        process_t *p = process_get_current();
+        if (!p) return -STRATUM_ESRCH;
+        return fd_close(&p->fds, (int)regs->rdi);
+    }
+
+    case SYS_dup2: {
+        process_t *p = process_get_current();
+        if (!p) return -STRATUM_ESRCH;
+        return fd_dup2(&p->fds, (int)regs->rdi, (int)regs->rsi);
+    }
+
+    case SYS_pipe: {
+        return sys_pipe_impl((int *)regs->rdi);
+    }
+
+    case SYS_poll: {
+        return sys_poll_impl((struct pollfd *)regs->rdi, (uint32_t)regs->rsi, (int)regs->rdx);
     }
 
     case SYS_nanosleep: {
