@@ -8,17 +8,22 @@
 #define PAGE_SHIFT      12
 #define HHDM_BASE       0xFFFF800000000000ULL
 
+extern uint64_t g_kernel_phys_base;
+
 /* Direct physical to virtual translation macros */
 static inline void *phys_to_virt(uint64_t paddr) {
     return (void *)(HHDM_BASE + paddr);
 }
 
-static inline uint64_t virt_to_phys(void *vaddr) {
+static inline uint64_t virt_to_phys(const void *vaddr) {
     uint64_t addr = (uint64_t)vaddr;
-    if (addr >= HHDM_BASE && addr < 0xFFFFFFFF80000000ULL) {
+    if (addr >= 0xFFFFFFFF80000000ULL) {
+        return (addr - 0xFFFFFFFF80000000ULL) + g_kernel_phys_base;
+    }
+    if (addr >= HHDM_BASE) {
         return addr - HHDM_BASE;
     }
-    return 0;
+    return addr;
 }
 
 #define PAGE_FLAG_FREE      0x01

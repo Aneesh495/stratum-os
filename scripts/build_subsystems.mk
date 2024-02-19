@@ -34,7 +34,12 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/drivers/uart.c \
                 kernel/drivers/fb.c \
                 kernel/drivers/acpi.c \
-                kernel/drivers/apic.c
+                kernel/drivers/apic.c \
+                kernel/drivers/pci.c \
+                kernel/drivers/virtqueue.c \
+                kernel/drivers/virtio.c \
+                kernel/drivers/virtio_blk.c \
+                kernel/drivers/virtio_net.c
 
 KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S \
                   kernel/arch/x86_64/interrupts.S \

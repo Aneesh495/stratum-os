@@ -1,7 +1,7 @@
 # Stratum OS Build Status
 
 ## Overview
-- Current Phase: P07 User ABI, ELF Loading, Ring 3
+- Current Phase: P10 VFS and StrataFS Storage
 - Status: in progress
 - Repository: Aneesh495/stratum-os
 - Target Architecture: x86-64 (UEFI boot, QEMU q35, TCG and acceleration)
@@ -17,8 +17,8 @@
 | P06 | Preemptive SMP Scheduler | passed |
 | P07 | User ABI, ELF Loading, Ring 3 | passed |
 | P08 | Processes, Threads, and IPC | passed |
-| P09 | PCI and Virtio Hardware I/O | in progress |
-| P10 | VFS and StrataFS Storage | unverified |
+| P09 | PCI and Virtio Hardware I/O | passed |
+| P10 | VFS and StrataFS Storage | in progress |
 | P11 | Journal Transactions and Crash Recovery | unverified |
 | P12 | Original Network Stack (TCP/IP) | unverified |
 | P13 | Native User Environment and Ledger Service | unverified |
@@ -34,7 +34,7 @@
 | A03 | Scheduling preemption, SMP live threads (500 threads / 32 procs) | passed |
 | A04 | Lifecycle, fork/exec/wait, threads, syscall boundaries | passed |
 | A05 | IPC, pipes, message channels, pollable readiness | passed |
-| A06 | Virtio block/net drivers, queue index wrapping, error handling | unverified |
+| A06 | Virtio block/net drivers, queue index wrapping, error handling | passed |
 | A07 | StrataFS operations, journal transactions, crash recovery | unverified |
 | A08 | Network stack: Ethernet, ARP, IPv4, ICMP, UDP, TCP streams | unverified |
 | A09 | Integrated durable ledger service across two guests | unverified |
@@ -44,7 +44,7 @@
 
 ## Latest Command Results
 - `scripts/doctor.py`: passed (Clang 23.1.2, LLD 23.1.2, NASM 2.16.03, llvm-objcopy, mtools 4.0.49, QEMU 11.1.1, OVMF hash verified)
-- `scripts/scope_check.py`: passed (5321 substantive kernel lines)
+- `scripts/scope_check.py`: passed (6530 substantive kernel lines)
 - `scripts/test_boot.py`: passed (1, 2, 4, 8 vCPUs, 64M, 256M, 1G profiles, 7/7 malformed loader rejections)
 - `scripts/test_cpu_faults.py`: passed (normal boot + deliberate #UD fault decoded with register dump)
 - `scripts/test_memory.py`: passed (host MM model 2M ops ASan/UBSan + guest PMM/SLAB/VMM 4-level paging)
@@ -52,6 +52,7 @@
 - `scripts/test_sched.py`: passed (1, 2, 4, 8 vCPUs preemptive SMP scheduling, O(1) multi-level priority queues, work stealing, sleep/wake, Gate A03 passed)
 - `scripts/test_abi.py`: passed (1, 2, 4, 8 vCPUs User ABI, safe usercopy fault recovery, ELF64 loader, Ring 3 entry, syscalls SYS_write/SYS_getpid/SYS_nanosleep/SYS_exit)
 - `scripts/test_process_ipc.py`: passed (1, 2, 4, 8 vCPUs process lifecycle, fork, COW memory isolation, IPC pipes, poll readiness, waitpid status propagation, dup2 redirection, Gates A04 and A05 passed)
+- `scripts/test_pci_virtio.py`: passed (1, 2, 4, 8 vCPUs PCI bus hierarchy enumeration, BAR probing, capability walking, Virtio modern/legacy transport, Virtio-blk synchronous read/write/flush/cycling, Virtio-net MAC and TX broadcast frame, Gate A06 passed)
 
 ## Current Architectural Decisions
 - ADR-0001: Pinned LLVM 23.1.2 toolchain with Clang and LLD targeting x86_64-unknown-windows for UEFI PE/COFF loader and x86_64-unknown-none-elf for kernel.

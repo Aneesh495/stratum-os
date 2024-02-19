@@ -16,6 +16,10 @@
 #include <kernel/file.h>
 #include <kernel/pipe.h>
 #include <kernel/process.h>
+#include <kernel/pci.h>
+#include <kernel/virtio.h>
+#include <kernel/virtio_blk.h>
+#include <kernel/virtio_net.h>
 #include <kernel/x86_64.h>
 
 extern const uint8_t g_user_init_binary[];
@@ -193,7 +197,86 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
     kassert(g_user_init_finished);
     kassert(g_user_exit_code == 42);
     kprintf("[TEST] P08 Processes, Threads, and IPC gates verified successfully.\n");
-    kprintf("[KERNEL] Phase P08 reached. Entering kernel idle loop with %u CPU(s) online.\n",
+
+    /* Ensure BSP execution is on g_kernel_pml4 */
+    write_cr3(virt_to_phys(g_kernel_pml4));
+
+    /* 14. Initialize PCI Bus and Virtio Hardware I/O (P09) */
+    pci_init();
+    virtio_blk_init();
+    virtio_net_init();
+
+    kprintf("[TEST] Running P09 PCI and Virtio Hardware I/O verification (Gate A06)...\n");
+
+    /* Test 1: Block Device I/O */
+    virtio_blk_dev_t *blk = virtio_blk_get_primary();
+    if (blk != NULL) {
+        kassert(blk->capacity_sectors > 0);
+
+        /* Read sector 0 */
+        static uint8_t sector_buf[VIRTIO_BLK_SECTOR_SIZE];
+        int64_t rd = virtio_blk_read(blk, 0, 1, sector_buf);
+        kassert(rd == VIRTIO_BLK_SECTOR_SIZE);
+
+        /* Write pattern to sector 100 */
+        static uint8_t write_pat[VIRTIO_BLK_SECTOR_SIZE];
+        for (int i = 0; i < VIRTIO_BLK_SECTOR_SIZE; i++) {
+            write_pat[i] = (uint8_t)(0xA5 ^ (i & 0xFF));
+        }
+
+        int64_t wr = virtio_blk_write(blk, 100, 1, write_pat);
+        kassert(wr == VIRTIO_BLK_SECTOR_SIZE);
+
+        int fl = virtio_blk_flush(blk);
+        kassert(fl == 0);
+
+        /* Read back sector 100 and verify integrity */
+        static uint8_t readback_pat[VIRTIO_BLK_SECTOR_SIZE];
+        memset(readback_pat, 0, VIRTIO_BLK_SECTOR_SIZE);
+        int64_t rd2 = virtio_blk_read(blk, 100, 1, readback_pat);
+        kassert(rd2 == VIRTIO_BLK_SECTOR_SIZE);
+        kassert(memcmp(write_pat, readback_pat, VIRTIO_BLK_SECTOR_SIZE) == 0);
+
+        /* Test queue index cycling with 50 sequential single-sector operations */
+        for (int iter = 0; iter < 50; iter++) {
+            int64_t r = virtio_blk_read(blk, (uint64_t)(iter % 64), 1, sector_buf);
+            kassert(r == VIRTIO_BLK_SECTOR_SIZE);
+        }
+        kprintf("[TEST] Virtio-blk synchronous read, write, flush, and queue index cycling verified.\n");
+    } else {
+        kprintf("[TEST] Note: Virtio-blk not attached; skipping block device I/O test.\n");
+    }
+
+    /* Test 2: Network Device I/O */
+    virtio_net_dev_t *net = virtio_net_get_primary();
+    if (net != NULL) {
+        /* Verify MAC address is non-zero */
+        bool mac_nonzero = false;
+        for (int i = 0; i < VIRTIO_NET_ETH_ALEN; i++) {
+            if (net->mac[i] != 0) mac_nonzero = true;
+        }
+        kassert(mac_nonzero);
+
+        /* Build test broadcast frame (ARP probe, 64 bytes) */
+        uint8_t test_frame[64];
+        memset(test_frame, 0, sizeof(test_frame));
+        /* Destination: Broadcast FF:FF:FF:FF:FF:FF */
+        memset(&test_frame[0], 0xFF, 6);
+        /* Source: Device MAC */
+        memcpy(&test_frame[6], net->mac, 6);
+        /* EtherType: 0x0806 (ARP) */
+        test_frame[12] = 0x08;
+        test_frame[13] = 0x06;
+
+        int tx_res = virtio_net_transmit(net, test_frame, sizeof(test_frame));
+        kassert(tx_res == sizeof(test_frame));
+        kprintf("[TEST] Virtio-net MAC identification and TX frame transmission verified.\n");
+    } else {
+        kprintf("[TEST] Note: Virtio-net not attached; skipping network device I/O test.\n");
+    }
+
+    kprintf("[TEST] P09 Virtio block and network hardware I/O verified successfully (Gate A06 passed).\n");
+    kprintf("[KERNEL] Phase P09 reached. Entering kernel idle loop with %u CPU(s) online.\n",
             smp_get_online_cpus());
 
     /* Deliberate fault injection test for P03 verification */

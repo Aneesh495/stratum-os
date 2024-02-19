@@ -237,6 +237,17 @@ void vmm_page_fault_handler(interrupt_frame_t *frame) {
     bool is_write   = (error_code & 2) != 0;
     bool is_user    = (error_code & 4) != 0;
 
+    /* Check for kernel upper-half PML4 synchronization */
+    if (fault_addr >= 0xFFFF800000000000ULL) {
+        uint64_t pml4_idx = PML4_INDEX(fault_addr);
+        uint64_t cr3 = read_cr3();
+        pml4_t *curr_pml4 = (pml4_t *)phys_to_virt(cr3);
+        if (!(curr_pml4->entries[pml4_idx] & PTE_PRESENT) && (g_kernel_pml4->entries[pml4_idx] & PTE_PRESENT)) {
+            curr_pml4->entries[pml4_idx] = g_kernel_pml4->entries[pml4_idx];
+            return;
+        }
+    }
+
     /* Check if this is a Copy-On-Write (COW) write fault */
     if (is_present && is_write) {
         uint64_t paddr = 0, flags = 0;

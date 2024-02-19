@@ -5,6 +5,8 @@
 #define MAX_SUPPORTED_PAGES (1024 * 1024) /* 4 GiB of RAM (1M pages) */
 #define BITMAP_WORDS        (MAX_SUPPORTED_PAGES / 64)
 
+uint64_t g_kernel_phys_base = 0;
+
 static uint64_t g_page_bitmap[BITMAP_WORDS];
 static page_t  *g_pages = NULL;
 static uint64_t g_num_pages = 0;
@@ -45,6 +47,8 @@ static void mark_range_reserved(uint64_t start_phys, uint64_t size_bytes) {
 
 void pmm_init(const boot_handoff_t *handoff) {
     memset(g_page_bitmap, 0xFF, sizeof(g_page_bitmap));
+
+    g_kernel_phys_base = handoff->kernel_phys_base;
 
     g_total_pages = 0;
     g_free_pages = 0;

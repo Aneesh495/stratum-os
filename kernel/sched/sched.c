@@ -294,7 +294,7 @@ void sched_reschedule(void) {
     spin_unlock(&rq->lock);
 
     /* Perform context switch */
-    uint64_t next_cr3 = next->address_space ? virt_to_phys(next->address_space) : 0;
+    uint64_t next_cr3 = next->address_space ? virt_to_phys(next->address_space) : virt_to_phys(g_kernel_pml4);
     sched_context_switch(&curr->saved_rsp, next->saved_rsp, next_cr3);
 
     sched_finish_switch();
