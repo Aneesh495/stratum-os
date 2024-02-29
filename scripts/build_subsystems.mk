@@ -39,7 +39,10 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/drivers/virtqueue.c \
                 kernel/drivers/virtio.c \
                 kernel/drivers/virtio_blk.c \
-                kernel/drivers/virtio_net.c
+                kernel/drivers/virtio_net.c \
+                kernel/fs/vfs.c \
+                kernel/fs/journal.c \
+                kernel/fs/stratafs.c
 
 KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S \
                   kernel/arch/x86_64/interrupts.S \

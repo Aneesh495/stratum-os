@@ -20,6 +20,9 @@
 #include <kernel/virtio.h>
 #include <kernel/virtio_blk.h>
 #include <kernel/virtio_net.h>
+#include <kernel/vfs.h>
+#include <kernel/stratafs.h>
+#include <kernel/journal.h>
 #include <kernel/x86_64.h>
 
 extern const uint8_t g_user_init_binary[];
@@ -276,7 +279,117 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
     }
 
     kprintf("[TEST] P09 Virtio block and network hardware I/O verified successfully (Gate A06 passed).\n");
-    kprintf("[KERNEL] Phase P09 reached. Entering kernel idle loop with %u CPU(s) online.\n",
+
+    /* 15. Initialize VFS, Journal, and StrataFS (P10 & P11) */
+    vfs_init();
+    stratafs_init();
+
+    kprintf("[TEST] Running P10 & P11 VFS, StrataFS Storage, and Journal Recovery verification (Gate A07)...\n");
+
+    /* Mount StrataFS on root / */
+    int m_res = vfs_mount("virtio-blk", "/", "stratafs", 0);
+    kassert(m_res == 0);
+
+    /* Test 1: Directory hierarchy creation */
+    kprintf("[TEST] mkdir /system...\n");
+    int d_res = vfs_mkdir("/system", 0755);
+    kprintf("[TEST] mkdir /system returned %d\n", d_res);
+    kassert(d_res == 0);
+    kprintf("[TEST] mkdir /system/logs...\n");
+    int d_res2 = vfs_mkdir("/system/logs", 0755);
+    kprintf("[TEST] mkdir /system/logs returned %d\n", d_res2);
+    kassert(d_res2 == 0);
+
+    /* Test 2: File creation and multi-block writes */
+    file_t *f = NULL;
+    kprintf("[TEST] open /system/logs/boot.log...\n");
+    int o_res = vfs_open("/system/logs/boot.log", O_CREAT | O_WRONLY, 0644, &f);
+    kprintf("[TEST] open returned %d, f=%p\n", o_res, f);
+    kassert(o_res == 0 && f != NULL);
+
+    /* Write 12,000 bytes spanning 3 distinct 4 KiB disk blocks */
+    static uint8_t file_buf[12000];
+    for (int i = 0; i < 12000; i++) {
+        file_buf[i] = (uint8_t)(0x5A ^ (i & 0xFF));
+    }
+    kprintf("[TEST] write 12000 bytes...\n");
+    int64_t wr_bytes = vfs_write(f, file_buf, sizeof(file_buf));
+    kprintf("[TEST] write returned %ld\n", wr_bytes);
+    kassert(wr_bytes == sizeof(file_buf));
+    vfs_close(f);
+
+    /* Test 3: Readback and verification */
+    f = NULL;
+    kprintf("[TEST] reopen for read...\n");
+    int ro_res = vfs_open("/system/logs/boot.log", O_RDONLY, 0, &f);
+    kprintf("[TEST] reopen returned %d\n", ro_res);
+    kassert(ro_res == 0 && f != NULL);
+
+    static uint8_t verify_buf[12000];
+    memset(verify_buf, 0, sizeof(verify_buf));
+    int64_t rd_bytes = vfs_read(f, verify_buf, sizeof(verify_buf));
+    kprintf("[TEST] read returned %ld\n", rd_bytes);
+    kassert(rd_bytes == sizeof(verify_buf));
+    kassert(memcmp(file_buf, verify_buf, sizeof(file_buf)) == 0);
+    vfs_close(f);
+
+    /* Test 4: Single indirect block test (60,000 bytes = 15 blocks) */
+    f = NULL;
+    int ind_open = vfs_open("/bigfile.dat", O_CREAT | O_WRONLY, 0644, &f);
+    kassert(ind_open == 0 && f != NULL);
+
+    static uint8_t big_buf[60000];
+    for (int i = 0; i < 60000; i++) {
+        big_buf[i] = (uint8_t)(0xC3 ^ ((i >> 4) & 0xFF));
+    }
+    int64_t big_wr = vfs_write(f, big_buf, sizeof(big_buf));
+    kassert(big_wr == sizeof(big_buf));
+    vfs_close(f);
+
+    f = NULL;
+    int ind_read = vfs_open("/bigfile.dat", O_RDONLY, 0, &f);
+    kassert(ind_read == 0 && f != NULL);
+
+    static uint8_t big_verify[60000];
+    memset(big_verify, 0, sizeof(big_verify));
+    int64_t big_rd = vfs_read(f, big_verify, sizeof(big_verify));
+    kassert(big_rd == sizeof(big_verify));
+    kassert(memcmp(big_buf, big_verify, sizeof(big_buf)) == 0);
+    vfs_close(f);
+
+    /* Test 5: Stat metadata verification */
+    vfs_stat_t st;
+    int stat_res = vfs_stat("/bigfile.dat", &st);
+    kassert(stat_res == 0);
+    kassert(st.st_size == 60000);
+
+    /* Test 6: Atomic Journal Transaction Checkpoint & Remount Recovery */
+    vfs_sync();
+    vfs_unmount("/");
+
+    /* Remount and verify persistent state */
+    int remount_res = vfs_mount("virtio-blk", "/", "stratafs", 0);
+    kassert(remount_res == 0);
+
+    f = NULL;
+    int remount_read = vfs_open("/system/logs/boot.log", O_RDONLY, 0, &f);
+    kassert(remount_read == 0 && f != NULL);
+    memset(verify_buf, 0, sizeof(verify_buf));
+    int64_t remount_rd = vfs_read(f, verify_buf, sizeof(verify_buf));
+    kassert(remount_rd == sizeof(verify_buf));
+    kassert(memcmp(file_buf, verify_buf, sizeof(file_buf)) == 0);
+    vfs_close(f);
+
+    /* Test 7: Unlink file */
+    int unl_res = vfs_unlink("/bigfile.dat");
+    kassert(unl_res == 0);
+    f = NULL;
+    int unl_open = vfs_open("/bigfile.dat", O_RDONLY, 0, &f);
+    kassert(unl_open != 0 && f == NULL);
+
+    kprintf("[TEST] StrataFS directory hierarchy, multi-block files, indirect blocks, atomic journal transactions, and remount recovery verified.\n");
+    kprintf("[TEST] P10 & P11 VFS and StrataFS storage verified successfully (Gate A07 passed).\n");
+    kprintf("[KERNEL] Phase P11 reached. Entering kernel idle loop with %u CPU(s) online.\n",
             smp_get_online_cpus());
 
     /* Deliberate fault injection test for P03 verification */

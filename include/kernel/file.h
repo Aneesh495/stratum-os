@@ -44,6 +44,7 @@ typedef struct file {
     void             *priv;
     volatile uint32_t refcount;
     uint32_t          flags;
+    uint64_t          offset;
     spinlock_t        lock;
 } file_t;
 
