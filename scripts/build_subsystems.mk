@@ -42,7 +42,15 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/drivers/virtio_net.c \
                 kernel/fs/vfs.c \
                 kernel/fs/journal.c \
-                kernel/fs/stratafs.c
+                kernel/fs/stratafs.c \
+                kernel/net/net.c \
+                kernel/net/ethernet.c \
+                kernel/net/arp.c \
+                kernel/net/ipv4.c \
+                kernel/net/icmp.c \
+                kernel/net/udp.c \
+                kernel/net/tcp.c \
+                kernel/net/socket.c
 
 KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S \
                   kernel/arch/x86_64/interrupts.S \

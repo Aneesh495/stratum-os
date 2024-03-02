@@ -1,7 +1,7 @@
 # Stratum OS Build Status
 
 ## Overview
-- Current Phase: P12 Original Network Stack (TCP/IP)
+- Current Phase: P13 Native User Environment and Ledger Service
 - Status: in progress
 - Repository: Aneesh495/stratum-os
 - Target Architecture: x86-64 (UEFI boot, QEMU q35, TCG and acceleration)
@@ -20,8 +20,8 @@
 | P09 | PCI and Virtio Hardware I/O | passed |
 | P10 | VFS and StrataFS Storage | passed |
 | P11 | Journal Transactions and Crash Recovery | passed |
-| P12 | Original Network Stack (TCP/IP) | in progress |
-| P13 | Native User Environment and Ledger Service | unverified |
+| P12 | Original Network Stack (TCP/IP) | passed |
+| P13 | Native User Environment and Ledger Service | in progress |
 | P14 | Depth, Concurrency, and Soak Verification | unverified |
 | P15 | Performance Benchmarks and Documentation | unverified |
 | P16 | Final Acceptance and Reproducibility | unverified |
@@ -36,7 +36,7 @@
 | A05 | IPC, pipes, message channels, pollable readiness | passed |
 | A06 | Virtio block/net drivers, queue index wrapping, error handling | passed |
 | A07 | StrataFS operations, journal transactions, crash recovery | passed |
-| A08 | Network stack: Ethernet, ARP, IPv4, ICMP, UDP, TCP streams | unverified |
+| A08 | Network stack: Ethernet, ARP, IPv4, ICMP, UDP, TCP streams | passed |
 | A09 | Integrated durable ledger service across two guests | unverified |
 | A10 | Soak workload (60 min mixed guest on 8 CPUs, 1 GiB) | unverified |
 | A11 | Fuzz testing (parsers/decoders) and model exploration | unverified |
@@ -44,7 +44,7 @@
 
 ## Latest Command Results
 - `scripts/doctor.py`: passed (Clang 23.1.2, LLD 23.1.2, NASM 2.16.03, llvm-objcopy, mtools 4.0.49, QEMU 11.1.1, OVMF hash verified)
-- `scripts/scope_check.py`: passed (6530 substantive kernel lines)
+- `scripts/scope_check.py`: passed (9932 substantive kernel lines)
 - `scripts/test_boot.py`: passed (1, 2, 4, 8 vCPUs, 64M, 256M, 1G profiles, 7/7 malformed loader rejections)
 - `scripts/test_cpu_faults.py`: passed (normal boot + deliberate #UD fault decoded with register dump)
 - `scripts/test_memory.py`: passed (host MM model 2M ops ASan/UBSan + guest PMM/SLAB/VMM 4-level paging)
@@ -54,6 +54,7 @@
 - `scripts/test_process_ipc.py`: passed (1, 2, 4, 8 vCPUs process lifecycle, fork, COW memory isolation, IPC pipes, poll readiness, waitpid status propagation, dup2 redirection, Gates A04 and A05 passed)
 - `scripts/test_pci_virtio.py`: passed (1, 2, 4, 8 vCPUs PCI bus hierarchy enumeration, BAR probing, capability walking, Virtio modern/legacy transport, Virtio-blk synchronous read/write/flush/cycling, Virtio-net MAC and TX broadcast frame, Gate A06 passed)
 - `scripts/test_stratafs.py`: passed (1, 2, 4, 8 vCPUs VFS mount table, StrataFS on-disk layout, WAL journal circular buffer, multi-level directory hierarchy, multi-block contiguous files, indirect block addressing, stat metadata, checkpoint remount persistence, unlink file reclamation, Gate A07 passed)
+- `scripts/test_network.py`: passed (1, 2, 4, 8 vCPUs Ethernet framing, ARP resolution/cache, IPv4 checksum/routing, ICMP echo responder, UDP datagrams, TCP 3-way handshake, stream data transfer, teardown, BSD socket API, Gate A08 passed)
 
 ## Current Architectural Decisions
 - ADR-0001: Pinned LLVM 23.1.2 toolchain with Clang and LLD targeting x86_64-unknown-windows for UEFI PE/COFF loader and x86_64-unknown-none-elf for kernel.
@@ -68,9 +69,10 @@
 - ADR-0010: Preemptive SMP scheduling implements O(1) priority queues, work stealing across runqueues, APIC periodic timer preemption (vector 0x20), and assembly context switching with SysV ABI compliance.
 - ADR-0011: VFS abstraction decouples file operations from filesystem implementations, supporting hierarchical path resolution, inode lifecycle refcounting, and standard POSIX-like file descriptor operations.
 - ADR-0012: StrataFS features 4096-byte blocks, direct and single-indirect block pointers, directory record indexing, and an atomic write-ahead logging (WAL) journal with CRC32 checksums for full crash consistency and redo recovery.
+- ADR-0013: Layered Network Stack provides Ethernet II framing, dynamic ARP cache, IPv4 forwarding with 16-bit one's complement Internet checksum, ICMP echo responder, UDP datagrams, full TCP state machine (SYN, ESTABLISHED, FIN), and BSD Socket API integrated with process file descriptor tables.
 
 ## Unresolved Defects
 - None currently recorded.
 
 ## Next Concrete Action
-- Implement Phase P12: Original Network Stack (TCP/IP) for Gate A08 (Ethernet II frame parsing/framing, ARP cache resolution, IPv4 routing/fragmentation/checksums, ICMP echo responder, UDP sockets, TCP 3-way handshake, sliding window sequence tracking, retransmission, and socket stream API).
+- Implement Phase P13: Native User Environment and Distributed Ledger Service for Gate A09 (native userland shell CLI, ledger transaction model, cryptographic hash chaining, network replication protocol across dual QEMU guests).

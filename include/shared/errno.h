@@ -38,10 +38,26 @@
 #define STRATUM_ENOSYS       38  /* Function not implemented */
 #define STRATUM_ENOTEMPTY    39  /* Directory not empty */
 #define STRATUM_ELOOP        40  /* Too many levels of symbolic links */
-#define STRATUM_ENOBUFS      105 /* No buffer space available */
-#define STRATUM_EISCONN      106 /* Transport endpoint is already connected */
-#define STRATUM_ENOTCONN     107 /* Transport endpoint is not connected */
-#define STRATUM_ETIMEDOUT    110 /* Connection timed out */
-#define STRATUM_ECONNREFUSED 111 /* Connection refused */
+#define STRATUM_EMSGSIZE        90  /* Message too long */
+#define STRATUM_EPROTOTYPE      91  /* Protocol wrong type for socket */
+#define STRATUM_ENOPROTOOPT     92  /* Protocol not available */
+#define STRATUM_EPROTONOSUPPORT 93  /* Protocol not supported */
+#define STRATUM_ESOCKTNOSUPPORT 94  /* Socket type not supported */
+#define STRATUM_EOPNOTSUPP      95  /* Operation not supported */
+#define STRATUM_ENOTSUP         95  /* Operation not supported */
+#define STRATUM_EPFNOSUPPORT    96  /* Protocol family not supported */
+#define STRATUM_EAFNOSUPPORT    97  /* Address family not supported by protocol */
+#define STRATUM_EADDRINUSE      98  /* Address already in use */
+#define STRATUM_EADDRNOTAVAIL   99  /* Cannot assign requested address */
+#define STRATUM_ENETDOWN        100 /* Network is down */
+#define STRATUM_ENETUNREACH     101 /* Network is unreachable */
+#define STRATUM_ENETRESET       102 /* Network dropped connection on reset */
+#define STRATUM_ECONNABORTED    103 /* Software caused connection abort */
+#define STRATUM_ECONNRESET      104 /* Connection reset by peer */
+#define STRATUM_ENOBUFS         105 /* No buffer space available */
+#define STRATUM_EISCONN         106 /* Transport endpoint is already connected */
+#define STRATUM_ENOTCONN        107 /* Transport endpoint is not connected */
+#define STRATUM_ETIMEDOUT       110 /* Connection timed out */
+#define STRATUM_ECONNREFUSED    111 /* Connection refused */
 
 #endif /* STRATUM_SHARED_ERRNO_H */

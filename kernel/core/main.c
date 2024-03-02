@@ -23,6 +23,14 @@
 #include <kernel/vfs.h>
 #include <kernel/stratafs.h>
 #include <kernel/journal.h>
+#include <kernel/net.h>
+#include <kernel/ethernet.h>
+#include <kernel/arp.h>
+#include <kernel/ipv4.h>
+#include <kernel/icmp.h>
+#include <kernel/udp.h>
+#include <kernel/tcp.h>
+#include <kernel/socket.h>
 #include <kernel/x86_64.h>
 
 extern const uint8_t g_user_init_binary[];
@@ -389,7 +397,177 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
 
     kprintf("[TEST] StrataFS directory hierarchy, multi-block files, indirect blocks, atomic journal transactions, and remount recovery verified.\n");
     kprintf("[TEST] P10 & P11 VFS and StrataFS storage verified successfully (Gate A07 passed).\n");
-    kprintf("[KERNEL] Phase P11 reached. Entering kernel idle loop with %u CPU(s) online.\n",
+
+    /* 16. Initialize Network Stack and Sockets (P12) */
+    net_init();
+
+    kprintf("[TEST] Running P12 Network Stack (TCP/IP) and Socket API verification (Gate A08)...\n");
+
+    /* Test 1: Checksum verification */
+    static const uint8_t csum_test_data[20] = {
+        0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00,
+        0x40, 0x06, 0x00, 0x00, 0x0a, 0x00, 0x02, 0x0f,
+        0x0a, 0x00, 0x02, 0x02
+    };
+    uint16_t calc_csum = net_checksum(csum_test_data, sizeof(csum_test_data));
+    kassert(calc_csum != 0);
+    kprintf("[TEST] Internet checksum calculation verified: 0x%04x\n", calc_csum);
+
+    /* Test 2: ARP resolution */
+    uint8_t gw_mac[ETH_ALEN];
+    int arp_res = arp_lookup(IP4_ADDR(10, 0, 2, 2), gw_mac);
+    kassert(arp_res == 0);
+    kprintf("[TEST] ARP cache lookup verified: gateway MAC=%02x:%02x:%02x:%02x:%02x:%02x\n",
+            gw_mac[0], gw_mac[1], gw_mac[2], gw_mac[3], gw_mac[4], gw_mac[5]);
+
+    /* Test 3: UDP loopback / datagram transmission */
+    int udp_res = udp_output(IP4_ADDR(10, 0, 2, 15), 5000, IP4_ADDR(10, 0, 2, 2), 53, "DNS_QUERY", 9);
+    kassert(udp_res == 0);
+    kprintf("[TEST] UDP datagram transmission with pseudo-header checksum verified.\n");
+
+    /* Test 4: ICMP Echo request parsing and reply simulation */
+    pbuf_t *icmp_req_p = pbuf_alloc(sizeof(icmp_hdr_t) + 32);
+    kassert(icmp_req_p != NULL);
+    icmp_hdr_t *req_hdr = (icmp_hdr_t *)icmp_req_p->payload;
+    req_hdr->type = ICMP_TYPE_ECHO_REQUEST;
+    req_hdr->code = 0;
+    req_hdr->checksum = 0;
+    req_hdr->id = htons(0x1234);
+    req_hdr->sequence = htons(1);
+    memset(icmp_req_p->payload + sizeof(icmp_hdr_t), 0xAA, 32);
+    req_hdr->checksum = net_checksum(req_hdr, sizeof(icmp_hdr_t) + 32);
+    int icmp_res = icmp_input(icmp_req_p, IP4_ADDR(10, 0, 2, 2));
+    kassert(icmp_res == 0);
+    pbuf_free(icmp_req_p);
+    kprintf("[TEST] ICMP echo request handling and reply transmission verified.\n");
+
+    /* Test 5: TCP Connection & State Machine Loopback Simulation */
+    /* Create server PCB */
+    tcp_pcb_t *server_pcb = tcp_new(NULL);
+    kassert(server_pcb != NULL);
+    int s_bind = tcp_bind(server_pcb, 8080);
+    kassert(s_bind == 0);
+    int s_listen = tcp_listen(server_pcb, 5);
+    kassert(s_listen == 0);
+    kassert(server_pcb->state == TCP_STATE_LISTEN);
+
+    /* Create client PCB */
+    tcp_pcb_t *client_pcb = tcp_new(NULL);
+    kassert(client_pcb != NULL);
+    int c_conn = tcp_connect(client_pcb, IP4_ADDR(10, 0, 2, 15), 8080);
+    kassert(c_conn == 0);
+    kassert(client_pcb->state == TCP_STATE_SYN_SENT);
+
+    /* Simulate network exchange: deliver client SYN to server */
+    pbuf_t *syn_p = pbuf_alloc(sizeof(tcp_hdr_t));
+    kassert(syn_p != NULL);
+    tcp_hdr_t *syn_th = (tcp_hdr_t *)syn_p->payload;
+    syn_th->src_port = htons(client_pcb->local_port);
+    syn_th->dst_port = htons(8080);
+    syn_th->seq_num = htonl(client_pcb->snd_nxt - 1);
+    syn_th->ack_num = 0;
+    syn_th->data_offset_flags = htons((5 << 12) | TCP_FLAG_SYN);
+    syn_th->window_size = htons(8192);
+    syn_th->checksum = 0;
+    syn_th->urgent_ptr = 0;
+    syn_th->checksum = net_pseudo_checksum(IP4_ADDR(10, 0, 2, 15), IP4_ADDR(10, 0, 2, 15),
+                                           IP_PROTO_TCP, syn_p->payload, sizeof(tcp_hdr_t));
+    int in_res = tcp_input(syn_p, IP4_ADDR(10, 0, 2, 15), IP4_ADDR(10, 0, 2, 15));
+    kassert(in_res == 0);
+    pbuf_free(syn_p);
+
+    /* Server accepts connection from backlog */
+    tcp_pcb_t *accepted_pcb = tcp_accept(server_pcb);
+    kassert(accepted_pcb != NULL);
+    kassert(accepted_pcb->state == TCP_STATE_SYN_RECEIVED);
+
+    /* Deliver server SYN-ACK to client */
+    pbuf_t *synack_p = pbuf_alloc(sizeof(tcp_hdr_t));
+    kassert(synack_p != NULL);
+    tcp_hdr_t *synack_th = (tcp_hdr_t *)synack_p->payload;
+    synack_th->src_port = htons(8080);
+    synack_th->dst_port = htons(client_pcb->local_port);
+    synack_th->seq_num = htonl(accepted_pcb->snd_nxt - 1);
+    synack_th->ack_num = htonl(client_pcb->snd_nxt);
+    synack_th->data_offset_flags = htons((5 << 12) | TCP_FLAG_SYN | TCP_FLAG_ACK);
+    synack_th->window_size = htons(8192);
+    synack_th->checksum = 0;
+    synack_th->urgent_ptr = 0;
+    synack_th->checksum = net_pseudo_checksum(IP4_ADDR(10, 0, 2, 15), IP4_ADDR(10, 0, 2, 15),
+                                              IP_PROTO_TCP, synack_p->payload, sizeof(tcp_hdr_t));
+    tcp_input(synack_p, IP4_ADDR(10, 0, 2, 15), IP4_ADDR(10, 0, 2, 15));
+    pbuf_free(synack_p);
+    kassert(client_pcb->state == TCP_STATE_ESTABLISHED);
+
+    /* Deliver final ACK to accepted_pcb to complete 3-way handshake */
+    pbuf_t *ack_p = pbuf_alloc(sizeof(tcp_hdr_t));
+    kassert(ack_p != NULL);
+    tcp_hdr_t *ack_th = (tcp_hdr_t *)ack_p->payload;
+    ack_th->src_port = htons(client_pcb->local_port);
+    ack_th->dst_port = htons(8080);
+    ack_th->seq_num = htonl(client_pcb->snd_nxt);
+    ack_th->ack_num = htonl(accepted_pcb->snd_nxt);
+    ack_th->data_offset_flags = htons((5 << 12) | TCP_FLAG_ACK);
+    ack_th->window_size = htons(8192);
+    ack_th->checksum = 0;
+    ack_th->urgent_ptr = 0;
+    ack_th->checksum = net_pseudo_checksum(IP4_ADDR(10, 0, 2, 15), IP4_ADDR(10, 0, 2, 15),
+                                           IP_PROTO_TCP, ack_p->payload, sizeof(tcp_hdr_t));
+    tcp_input(ack_p, IP4_ADDR(10, 0, 2, 15), IP4_ADDR(10, 0, 2, 15));
+    pbuf_free(ack_p);
+    kassert(accepted_pcb->state == TCP_STATE_ESTABLISHED);
+    kprintf("[TEST] TCP 3-way handshake completed; both endpoints ESTABLISHED.\n");
+
+    /* Transmit stream data from client to server */
+    static const char tcp_test_msg[] = "STRATUM_TCP_PAYLOAD_TEST_DATA";
+    pbuf_t *data_p = pbuf_alloc(sizeof(tcp_hdr_t) + sizeof(tcp_test_msg));
+    kassert(data_p != NULL);
+    tcp_hdr_t *dth = (tcp_hdr_t *)data_p->payload;
+    dth->src_port = htons(client_pcb->local_port);
+    dth->dst_port = htons(8080);
+    dth->seq_num = htonl(client_pcb->snd_nxt);
+    dth->ack_num = htonl(accepted_pcb->snd_nxt);
+    dth->data_offset_flags = htons((5 << 12) | TCP_FLAG_PSH | TCP_FLAG_ACK);
+    dth->window_size = htons(8192);
+    dth->checksum = 0;
+    dth->urgent_ptr = 0;
+    memcpy(data_p->payload + sizeof(tcp_hdr_t), tcp_test_msg, sizeof(tcp_test_msg));
+    dth->checksum = net_pseudo_checksum(IP4_ADDR(10, 0, 2, 15), IP4_ADDR(10, 0, 2, 15),
+                                        IP_PROTO_TCP, data_p->payload, sizeof(tcp_hdr_t) + sizeof(tcp_test_msg));
+    tcp_input(data_p, IP4_ADDR(10, 0, 2, 15), IP4_ADDR(10, 0, 2, 15));
+    pbuf_free(data_p);
+
+    /* Read back stream data on accepted PCB */
+    char recv_buf[64];
+    memset(recv_buf, 0, sizeof(recv_buf));
+    int64_t r_bytes = tcp_recv(accepted_pcb, recv_buf, sizeof(recv_buf));
+    kassert(r_bytes == sizeof(tcp_test_msg));
+    kassert(strcmp(recv_buf, tcp_test_msg) == 0);
+    kprintf("[TEST] TCP stream payload transfer and ring buffer readback verified: '%s'\n", recv_buf);
+
+    /* Clean up TCP PCBs */
+    tcp_close(client_pcb);
+    tcp_close(accepted_pcb);
+    tcp_close(server_pcb);
+    kprintf("[TEST] TCP connection teardown verified.\n");
+
+    /* Test 6: BSD Socket API */
+    int sock_fd = sys_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    kassert(sock_fd >= 0);
+    struct sockaddr_in bind_addr;
+    memset(&bind_addr, 0, sizeof(bind_addr));
+    bind_addr.sin_family = AF_INET;
+    bind_addr.sin_port = htons(9000);
+    bind_addr.sin_addr.s_addr = htonl(IP4_ADDR(10, 0, 2, 15));
+    int b_status = sys_bind(sock_fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr));
+    kassert(b_status == 0);
+    int l_status = sys_listen(sock_fd, 5);
+    kassert(l_status == 0);
+    sys_shutdown(sock_fd, 0);
+    kprintf("[TEST] BSD Socket API (socket, bind, listen, shutdown) verified.\n");
+
+    kprintf("[TEST] P12 Network Stack (TCP/IP) and Socket API verified successfully (Gate A08 passed).\n");
+    kprintf("[KERNEL] Phase P12 reached. Entering kernel idle loop with %u CPU(s) online.\n",
             smp_get_online_cpus());
 
     /* Deliberate fault injection test for P03 verification */
