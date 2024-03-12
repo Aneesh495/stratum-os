@@ -109,4 +109,13 @@
 #define SHUT_WR             1
 #define SHUT_RDWR           2
 
+typedef struct strat_sysinfo {
+    uint64_t uptime_ms;
+    uint32_t online_cpus;
+    uint32_t active_processes;
+    uint64_t total_memory_bytes;
+    uint64_t free_memory_bytes;
+    uint64_t total_syscalls;
+} strat_sysinfo_t;
+
 #endif /* STRATUM_SHARED_SYSCALL_NUMS_H */

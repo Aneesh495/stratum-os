@@ -50,7 +50,11 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/net/icmp.c \
                 kernel/net/udp.c \
                 kernel/net/tcp.c \
-                kernel/net/socket.c
+                kernel/net/socket.c \
+                kernel/core/sha256.c \
+                kernel/ledger/ledger.c \
+                kernel/debug/trace.c \
+                kernel/debug/panic.c
 
 KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S \
                   kernel/arch/x86_64/interrupts.S \
@@ -102,12 +106,16 @@ USER_CFLAGS := -target x86_64-unknown-none-elf -ffreestanding -mno-red-zone \
 
 USER_LDFLAGS := -nostdlib -static -z max-page-size=0x1000 -T user/lib/user.ld
 
-$(BUILD_DIR)/user_init.elf: user/lib/crt0.S user/lib/syscall.c user/apps/init.c user/lib/user.ld
+$(BUILD_DIR)/user_init.elf: user/lib/crt0.S user/lib/syscall.c user/lib/string.c user/lib/printf.c user/apps/sh.c user/apps/ledgerd.c user/apps/init.c user/lib/user.ld
 	@mkdir -p $(BUILD_DIR)/user
 	$(CLANG) $(USER_CFLAGS) -c user/lib/crt0.S -o $(BUILD_DIR)/user/crt0.o
 	$(CLANG) $(USER_CFLAGS) -c user/lib/syscall.c -o $(BUILD_DIR)/user/syscall.o
+	$(CLANG) $(USER_CFLAGS) -c user/lib/string.c -o $(BUILD_DIR)/user/string.o
+	$(CLANG) $(USER_CFLAGS) -c user/lib/printf.c -o $(BUILD_DIR)/user/printf.o
+	$(CLANG) $(USER_CFLAGS) -c user/apps/sh.c -o $(BUILD_DIR)/user/sh.o
+	$(CLANG) $(USER_CFLAGS) -c user/apps/ledgerd.c -o $(BUILD_DIR)/user/ledgerd.o
 	$(CLANG) $(USER_CFLAGS) -c user/apps/init.c -o $(BUILD_DIR)/user/init.o
-	$(LD_LLD) $(USER_LDFLAGS) -o $@ $(BUILD_DIR)/user/crt0.o $(BUILD_DIR)/user/syscall.o $(BUILD_DIR)/user/init.o
+	$(LD_LLD) $(USER_LDFLAGS) -o $@ $(BUILD_DIR)/user/crt0.o $(BUILD_DIR)/user/syscall.o $(BUILD_DIR)/user/string.o $(BUILD_DIR)/user/printf.o $(BUILD_DIR)/user/sh.o $(BUILD_DIR)/user/ledgerd.o $(BUILD_DIR)/user/init.o
 
 $(BUILD_DIR)/kernel/core/user_init_blob.o: kernel/core/user_init_blob.S $(BUILD_DIR)/user_init.elf
 	@mkdir -p $(dir $@)

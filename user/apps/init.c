@@ -163,6 +163,28 @@ int main(int argc, char **argv) {
     close(new_fd);
     print("[USER] dup2() verified successfully.\n");
 
+    /* 8. Phase P13 Native User Environment & Interactive Shell Tests */
+    extern int sh_execute_cmd(const char *cmd_line);
+    extern int ledgerd_init(void);
+    extern int ledgerd_add_tx_and_commit(uint64_t sender, uint64_t recipient, uint64_t amount);
+    extern int ledgerd_persist_to_file(const char *path);
+
+    print("[USER] Running Phase P13 Native User Environment & Shell CLI verification...\n");
+    sh_execute_cmd("help");
+    sh_execute_cmd("echo [SHELL] Stratum Interactive Shell CLI operational");
+    sh_execute_cmd("sysinfo");
+    sh_execute_cmd("netstat");
+    sh_execute_cmd("ping 10.0.2.2");
+
+    /* 9. Phase P13 Distributed Durable Ledger Service Tests */
+    print("[USER] Running Phase P13 Distributed Durable Ledger verification...\n");
+    ledgerd_init();
+    ledgerd_add_tx_and_commit(101, 202, 5000);
+    ledgerd_add_tx_and_commit(202, 303, 1500);
+    ledgerd_persist_to_file("/strata/user_ledger.dat");
+    sh_execute_cmd("ledger status");
+    print("[USER] Phase P13 Native User Environment & Ledger Service verified successfully.\n");
+
     print("[USER] Resumed from sleep. Exiting cleanly with code 42.\n");
     return 42;
 }

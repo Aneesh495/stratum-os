@@ -7,10 +7,17 @@
 #include <kernel/process.h>
 #include <kernel/file.h>
 #include <kernel/pipe.h>
+#include <kernel/vfs.h>
+#include <kernel/socket.h>
+#include <kernel/trace.h>
+#include <kernel/pmm.h>
+#include <kernel/string.h>
 #include <shared/syscall_nums.h>
 #include <shared/errno.h>
 
 extern void syscall_entry(void);
+
+static volatile uint64_t g_total_syscall_count = 0;
 
 static inline bool is_user_range_valid(const void *addr, size_t len) {
     uint64_t start = (uint64_t)addr;
@@ -124,6 +131,175 @@ static int64_t sys_write_impl(int fd, const void *u_buf, size_t count) {
     return (int64_t)written;
 }
 
+static int copy_str_from_user(char *dst_k, const char *src_u, size_t max_len) {
+    if (!dst_k || !src_u || max_len == 0) return -STRATUM_EINVAL;
+    size_t i = 0;
+    while (i < max_len - 1) {
+        char c;
+        if (copy_from_user(&c, src_u + i, 1) != 0) {
+            return -STRATUM_EFAULT;
+        }
+        dst_k[i] = c;
+        if (c == '\0') {
+            return 0;
+        }
+        i++;
+    }
+    dst_k[max_len - 1] = '\0';
+    return 0;
+}
+
+static int64_t sys_open_impl(const char *u_path, int flags, int mode) {
+    if (!u_path) return -STRATUM_EINVAL;
+    char kpath[VFS_MAX_PATH];
+    memset(kpath, 0, sizeof(kpath));
+    if (copy_str_from_user(kpath, u_path, sizeof(kpath)) != 0) {
+        return -STRATUM_EFAULT;
+    }
+
+    process_t *proc = process_get_current();
+    if (!proc) return -STRATUM_ESRCH;
+
+    file_t *f = NULL;
+    int res = vfs_open(kpath, flags, mode, &f);
+    if (res != 0) return res;
+
+    int fd = fd_alloc(&proc->fds, f);
+    if (fd < 0) {
+        vfs_close(f);
+        return fd;
+    }
+    return fd;
+}
+
+static int64_t sys_lseek_impl(int fd, int64_t offset, int whence) {
+    process_t *proc = process_get_current();
+    if (!proc) return -STRATUM_ESRCH;
+    file_t *f = fd_get(&proc->fds, fd);
+    if (!f) return -STRATUM_EBADF;
+    int64_t res = vfs_lseek(f, offset, whence);
+    file_close(f);
+    return res;
+}
+
+static int64_t sys_stat_impl(const char *u_path, vfs_stat_t *u_st) {
+    if (!u_path || !u_st) return -STRATUM_EINVAL;
+    char kpath[VFS_MAX_PATH];
+    memset(kpath, 0, sizeof(kpath));
+    if (copy_str_from_user(kpath, u_path, sizeof(kpath)) != 0) {
+        return -STRATUM_EFAULT;
+    }
+    vfs_stat_t kst;
+    int res = vfs_stat(kpath, &kst);
+    if (res != 0) return res;
+    if (copy_to_user(u_st, &kst, sizeof(kst)) != 0) {
+        return -STRATUM_EFAULT;
+    }
+    return 0;
+}
+
+static int64_t sys_mkdir_impl(const char *u_path, int mode) {
+    if (!u_path) return -STRATUM_EINVAL;
+    char kpath[VFS_MAX_PATH];
+    memset(kpath, 0, sizeof(kpath));
+    if (copy_str_from_user(kpath, u_path, sizeof(kpath)) != 0) {
+        return -STRATUM_EFAULT;
+    }
+    return vfs_mkdir(kpath, mode);
+}
+
+static int64_t sys_unlink_impl(const char *u_path) {
+    if (!u_path) return -STRATUM_EINVAL;
+    char kpath[VFS_MAX_PATH];
+    memset(kpath, 0, sizeof(kpath));
+    if (copy_str_from_user(kpath, u_path, sizeof(kpath)) != 0) {
+        return -STRATUM_EFAULT;
+    }
+    return vfs_unlink(kpath);
+}
+
+static int64_t sys_fsync_impl(int fd) {
+    process_t *proc = process_get_current();
+    if (!proc) return -STRATUM_ESRCH;
+    file_t *f = fd_get(&proc->fds, fd);
+    if (!f) return -STRATUM_EBADF;
+    int res = 0;
+    if (f->type == FILE_TYPE_VFS && f->priv) {
+        vfs_node_t *node = (vfs_node_t *)f->priv;
+        if (node->ops && node->ops->sync) {
+            res = node->ops->sync(node);
+        }
+    }
+    file_close(f);
+    return res;
+}
+
+static int64_t sys_bind_user(int fd, const struct sockaddr *u_addr, uint32_t addrlen) {
+    if (!u_addr || addrlen > 128) return -STRATUM_EINVAL;
+    char kaddr[128];
+    if (copy_from_user(kaddr, u_addr, addrlen) != 0) return -STRATUM_EFAULT;
+    return sys_bind(fd, (const struct sockaddr *)kaddr, addrlen);
+}
+
+static int64_t sys_accept_user(int fd, struct sockaddr *u_addr, uint32_t *u_addrlen) {
+    char kaddr[128];
+    uint32_t klen = sizeof(kaddr);
+    int cfd = sys_accept(fd, (struct sockaddr *)kaddr, &klen);
+    if (cfd < 0) return cfd;
+    if (u_addr && u_addrlen) {
+        copy_to_user(u_addr, kaddr, klen);
+        copy_to_user(u_addrlen, &klen, sizeof(uint32_t));
+    }
+    return cfd;
+}
+
+static int64_t sys_connect_user(int fd, const struct sockaddr *u_addr, uint32_t addrlen) {
+    if (!u_addr || addrlen > 128) return -STRATUM_EINVAL;
+    char kaddr[128];
+    if (copy_from_user(kaddr, u_addr, addrlen) != 0) return -STRATUM_EFAULT;
+    return sys_connect(fd, (const struct sockaddr *)kaddr, addrlen);
+}
+
+static int64_t sys_send_user(int fd, const void *u_buf, size_t len, int flags) {
+    if (!is_user_range_valid(u_buf, len)) return -STRATUM_EFAULT;
+    char kbuf[512];
+    size_t sent = 0;
+    while (sent < len) {
+        size_t chunk = (len - sent > sizeof(kbuf)) ? sizeof(kbuf) : (len - sent);
+        if (copy_from_user(kbuf, (const char *)u_buf + sent, chunk) != 0) return -STRATUM_EFAULT;
+        int64_t res = sys_send(fd, kbuf, chunk, flags);
+        if (res < 0) return (sent > 0) ? (int64_t)sent : res;
+        sent += (size_t)res;
+        if ((size_t)res < chunk) break;
+    }
+    return (int64_t)sent;
+}
+
+static int64_t sys_recv_user(int fd, void *u_buf, size_t len, int flags) {
+    if (!is_user_range_valid(u_buf, len)) return -STRATUM_EFAULT;
+    char kbuf[512];
+    size_t to_recv = (len > sizeof(kbuf)) ? sizeof(kbuf) : len;
+    int64_t res = sys_recv(fd, kbuf, to_recv, flags);
+    if (res > 0) {
+        if (copy_to_user(u_buf, kbuf, (size_t)res) != 0) return -STRATUM_EFAULT;
+    }
+    return res;
+}
+
+static int64_t sys_sysinfo_impl(strat_sysinfo_t *u_info) {
+    if (!u_info || !is_user_range_valid(u_info, sizeof(strat_sysinfo_t))) return -STRATUM_EFAULT;
+    strat_sysinfo_t kinfo;
+    memset(&kinfo, 0, sizeof(kinfo));
+    kinfo.uptime_ms = timer_get_uptime_ms();
+    kinfo.online_cpus = smp_get_online_cpus();
+    kinfo.active_processes = 1;
+    kinfo.total_memory_bytes = pmm_get_total_pages() * PAGE_SIZE;
+    kinfo.free_memory_bytes = pmm_get_free_pages() * PAGE_SIZE;
+    kinfo.total_syscalls = g_total_syscall_count;
+    if (copy_to_user(u_info, &kinfo, sizeof(kinfo)) != 0) return -STRATUM_EFAULT;
+    return 0;
+}
+
 static int64_t sys_pipe_impl(int *u_pipefd) {
     if (!is_user_range_valid(u_pipefd, 2 * sizeof(int))) {
         return -STRATUM_EFAULT;
@@ -225,7 +401,10 @@ static int64_t sys_poll_impl(struct pollfd *u_fds, uint32_t nfds, int timeout_ms
 int64_t syscall_dispatch(syscall_regs_t *regs) {
     if (!regs) return -STRATUM_EINVAL;
 
+    __atomic_add_fetch(&g_total_syscall_count, 1, __ATOMIC_RELAXED);
     uint64_t nr = regs->rax;
+
+    trace_emit(TRACE_EVENT_SYSCALL, nr, regs->rdi, regs->rsi, regs->rdx);
 
     switch (nr) {
     case SYS_exit: {
@@ -258,10 +437,34 @@ int64_t syscall_dispatch(syscall_regs_t *regs) {
         return sys_write_impl((int)regs->rdi, (const void *)regs->rsi, (size_t)regs->rdx);
     }
 
+    case SYS_open: {
+        return sys_open_impl((const char *)regs->rdi, (int)regs->rsi, (int)regs->rdx);
+    }
+
     case SYS_close: {
         process_t *p = process_get_current();
         if (!p) return -STRATUM_ESRCH;
         return fd_close(&p->fds, (int)regs->rdi);
+    }
+
+    case SYS_lseek: {
+        return sys_lseek_impl((int)regs->rdi, (int64_t)regs->rsi, (int)regs->rdx);
+    }
+
+    case SYS_stat: {
+        return sys_stat_impl((const char *)regs->rdi, (vfs_stat_t *)regs->rsi);
+    }
+
+    case SYS_mkdir: {
+        return sys_mkdir_impl((const char *)regs->rdi, (int)regs->rsi);
+    }
+
+    case SYS_unlink: {
+        return sys_unlink_impl((const char *)regs->rdi);
+    }
+
+    case SYS_fsync: {
+        return sys_fsync_impl((int)regs->rdi);
     }
 
     case SYS_dup2: {
@@ -278,6 +481,38 @@ int64_t syscall_dispatch(syscall_regs_t *regs) {
         return sys_poll_impl((struct pollfd *)regs->rdi, (uint32_t)regs->rsi, (int)regs->rdx);
     }
 
+    case SYS_socket: {
+        return sys_socket((int)regs->rdi, (int)regs->rsi, (int)regs->rdx);
+    }
+
+    case SYS_bind: {
+        return sys_bind_user((int)regs->rdi, (const struct sockaddr *)regs->rsi, (uint32_t)regs->rdx);
+    }
+
+    case SYS_listen: {
+        return sys_listen((int)regs->rdi, (int)regs->rsi);
+    }
+
+    case SYS_accept: {
+        return sys_accept_user((int)regs->rdi, (struct sockaddr *)regs->rsi, (uint32_t *)regs->rdx);
+    }
+
+    case SYS_connect: {
+        return sys_connect_user((int)regs->rdi, (const struct sockaddr *)regs->rsi, (uint32_t)regs->rdx);
+    }
+
+    case SYS_send: {
+        return sys_send_user((int)regs->rdi, (const void *)regs->rsi, (size_t)regs->rdx, (int)regs->r10);
+    }
+
+    case SYS_recv: {
+        return sys_recv_user((int)regs->rdi, (void *)regs->rsi, (size_t)regs->rdx, (int)regs->r10);
+    }
+
+    case SYS_shutdown: {
+        return sys_shutdown((int)regs->rdi, (int)regs->rsi);
+    }
+
     case SYS_nanosleep: {
         uint32_t ms = (uint32_t)regs->rdi;
         thread_sleep_ms(ms);
@@ -286,6 +521,15 @@ int64_t syscall_dispatch(syscall_regs_t *regs) {
 
     case SYS_clock_gettime: {
         return (int64_t)timer_get_uptime_ms();
+    }
+
+    case SYS_trace_emit: {
+        trace_emit((uint32_t)regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8);
+        return 0;
+    }
+
+    case SYS_sysinfo: {
+        return sys_sysinfo_impl((strat_sysinfo_t *)regs->rdi);
     }
 
     case SYS_thread_create:

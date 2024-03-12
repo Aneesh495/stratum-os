@@ -18,6 +18,36 @@ struct pollfd {
     int16_t  revents;
 };
 
+struct in_addr {
+    uint32_t s_addr;
+};
+
+struct sockaddr {
+    uint16_t sa_family;
+    char     sa_data[14];
+};
+
+struct sockaddr_in {
+    uint16_t       sin_family;
+    uint16_t       sin_port;
+    struct in_addr sin_addr;
+    uint8_t        sin_zero[8];
+};
+
+typedef struct {
+    uint64_t st_ino;
+    uint32_t st_mode;
+    uint32_t st_nlink;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint64_t st_size;
+    uint32_t st_blksize;
+    uint64_t st_blocks;
+    uint64_t st_atime;
+    uint64_t st_mtime;
+    uint64_t st_ctime;
+} user_stat_t;
+
 static inline int64_t syscall0(uint64_t nr) {
     int64_t ret;
     __asm__ volatile("syscall" : "=a"(ret) : "a"(nr) : "rcx", "r11", "memory");
@@ -42,8 +72,24 @@ static inline int64_t syscall3(uint64_t nr, uint64_t a1, uint64_t a2, uint64_t a
     return ret;
 }
 
+static inline int64_t syscall4(uint64_t nr, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4) {
+    int64_t ret;
+    register uint64_t r10 __asm__("r10") = a4;
+    __asm__ volatile("syscall" : "=a"(ret) : "a"(nr), "D"(a1), "S"(a2), "d"(a3), "r"(r10) : "rcx", "r11", "memory");
+    return ret;
+}
+
+static inline int64_t syscall5(uint64_t nr, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
+    int64_t ret;
+    register uint64_t r10 __asm__("r10") = a4;
+    register uint64_t r8  __asm__("r8")  = a5;
+    __asm__ volatile("syscall" : "=a"(ret) : "a"(nr), "D"(a1), "S"(a2), "d"(a3), "r"(r10), "r"(r8) : "rcx", "r11", "memory");
+    return ret;
+}
+
 void exit(int status) __attribute__((noreturn));
 
+/* File System API */
 static inline int write(int fd, const void *buf, size_t count) {
     return (int)syscall3(SYS_write, (uint64_t)fd, (uint64_t)buf, (uint64_t)count);
 }
@@ -52,8 +98,32 @@ static inline int read(int fd, void *buf, size_t count) {
     return (int)syscall3(SYS_read, (uint64_t)fd, (uint64_t)buf, (uint64_t)count);
 }
 
+static inline int open(const char *path, int flags, int mode) {
+    return (int)syscall3(SYS_open, (uint64_t)path, (uint64_t)flags, (uint64_t)mode);
+}
+
 static inline int close(int fd) {
     return (int)syscall1(SYS_close, (uint64_t)fd);
+}
+
+static inline int64_t lseek(int fd, int64_t offset, int whence) {
+    return syscall3(SYS_lseek, (uint64_t)fd, (uint64_t)offset, (uint64_t)whence);
+}
+
+static inline int stat(const char *path, user_stat_t *st) {
+    return (int)syscall2(SYS_stat, (uint64_t)path, (uint64_t)st);
+}
+
+static inline int mkdir(const char *path, int mode) {
+    return (int)syscall2(SYS_mkdir, (uint64_t)path, (uint64_t)mode);
+}
+
+static inline int unlink(const char *path) {
+    return (int)syscall1(SYS_unlink, (uint64_t)path);
+}
+
+static inline int fsync(int fd) {
+    return (int)syscall1(SYS_fsync, (uint64_t)fd);
 }
 
 static inline int dup2(int oldfd, int newfd) {
@@ -68,6 +138,40 @@ static inline int poll(struct pollfd *fds, uint32_t nfds, int timeout) {
     return (int)syscall3(SYS_poll, (uint64_t)fds, (uint64_t)nfds, (uint64_t)timeout);
 }
 
+/* Socket API */
+static inline int socket(int domain, int type, int protocol) {
+    return (int)syscall3(SYS_socket, (uint64_t)domain, (uint64_t)type, (uint64_t)protocol);
+}
+
+static inline int bind(int sockfd, const struct sockaddr *addr, uint32_t addrlen) {
+    return (int)syscall3(SYS_bind, (uint64_t)sockfd, (uint64_t)addr, (uint64_t)addrlen);
+}
+
+static inline int listen(int sockfd, int backlog) {
+    return (int)syscall2(SYS_listen, (uint64_t)sockfd, (uint64_t)backlog);
+}
+
+static inline int accept(int sockfd, struct sockaddr *addr, uint32_t *addrlen) {
+    return (int)syscall3(SYS_accept, (uint64_t)sockfd, (uint64_t)addr, (uint64_t)addrlen);
+}
+
+static inline int connect(int sockfd, const struct sockaddr *addr, uint32_t addrlen) {
+    return (int)syscall3(SYS_connect, (uint64_t)sockfd, (uint64_t)addr, (uint64_t)addrlen);
+}
+
+static inline int64_t send(int sockfd, const void *buf, size_t len, int flags) {
+    return syscall4(SYS_send, (uint64_t)sockfd, (uint64_t)buf, (uint64_t)len, (uint64_t)flags);
+}
+
+static inline int64_t recv(int sockfd, void *buf, size_t len, int flags) {
+    return syscall4(SYS_recv, (uint64_t)sockfd, (uint64_t)buf, (uint64_t)len, (uint64_t)flags);
+}
+
+static inline int shutdown(int sockfd, int how) {
+    return (int)syscall2(SYS_shutdown, (uint64_t)sockfd, (uint64_t)how);
+}
+
+/* Process and System Management */
 static inline int fork(void) {
     return (int)syscall0(SYS_fork);
 }
@@ -90,6 +194,14 @@ static inline int sleep_ms(uint32_t ms) {
 
 static inline uint64_t uptime(void) {
     return (uint64_t)syscall0(SYS_clock_gettime);
+}
+
+static inline int sysinfo(strat_sysinfo_t *info) {
+    return (int)syscall1(SYS_sysinfo, (uint64_t)info);
+}
+
+static inline void trace_emit(uint32_t event_id, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4) {
+    syscall5(SYS_trace_emit, (uint64_t)event_id, a1, a2, a3, a4);
 }
 
 #endif /* STRAT_API_H */

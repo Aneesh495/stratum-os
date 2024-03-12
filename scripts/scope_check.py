@@ -22,6 +22,7 @@ KERNEL_DIRS = [
     "kernel/fs",
     "kernel/net",
     "kernel/debug",
+    "kernel/ledger",
     "include/kernel",
     "include/shared",
 ]

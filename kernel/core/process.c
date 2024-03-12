@@ -194,6 +194,7 @@ void process_exit(int status) {
     if (proc->pid == 1) {
         g_user_exit_code = status;
         g_user_init_finished = true;
+        smp_send_ipi(g_cpus[0].lapic_id, VEC_IPI_RESCHED);
     }
 
     spin_unlock_irqrestore(&g_process_lock, flags);
