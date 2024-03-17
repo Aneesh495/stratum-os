@@ -54,7 +54,8 @@ KERNEL_CSRCS := kernel/core/string.c \
                 kernel/core/sha256.c \
                 kernel/ledger/ledger.c \
                 kernel/debug/trace.c \
-                kernel/debug/panic.c
+                kernel/debug/panic.c \
+                tests/guest/stress.c
 
 KERNEL_ASMSRCS := kernel/arch/x86_64/entry.S \
                   kernel/arch/x86_64/interrupts.S \
@@ -97,6 +98,10 @@ $(BUILD_DIR)/BOOTX64.EFI: $(UEFI_OBJS)
 build-kernel: $(BUILD_DIR)/stratum.elf
 
 $(BUILD_DIR)/kernel/%.o: kernel/%.c
+	@mkdir -p $(dir $@)
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/tests/guest/%.o: tests/guest/%.c
 	@mkdir -p $(dir $@)
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 

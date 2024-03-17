@@ -158,3 +158,54 @@ void u_printf(const char *fmt, ...) {
     va_end(ap);
     buf_flush(&pb);
 }
+
+int printf(const char *fmt, ...) {
+    print_buf_t pb;
+    pb.fd = 1;
+    pb.pos = 0;
+
+    va_list ap;
+    va_start(ap, fmt);
+
+    for (size_t i = 0; fmt[i] != '\0'; i++) {
+        if (fmt[i] == '%' && fmt[i + 1] != '\0') {
+            i++;
+            if (fmt[i] == 's') {
+                const char *s = va_arg(ap, const char *);
+                buf_puts(&pb, s);
+            } else if (fmt[i] == 'd') {
+                int val = va_arg(ap, int);
+                buf_print_int(&pb, val);
+            } else if (fmt[i] == 'u') {
+                unsigned int val = va_arg(ap, unsigned int);
+                buf_print_uint(&pb, val, 10);
+            } else if (fmt[i] == 'l' && fmt[i + 1] == 'u') {
+                i++;
+                uint64_t val = va_arg(ap, uint64_t);
+                buf_print_uint(&pb, val, 10);
+            } else if (fmt[i] == 'l' && fmt[i + 1] == 'd') {
+                i++;
+                int64_t val = va_arg(ap, int64_t);
+                buf_print_int(&pb, val);
+            } else if (fmt[i] == 'x') {
+                unsigned int val = va_arg(ap, unsigned int);
+                buf_print_uint(&pb, val, 16);
+            } else if (fmt[i] == 'l' && fmt[i + 1] == 'x') {
+                i++;
+                uint64_t val = va_arg(ap, uint64_t);
+                buf_print_uint(&pb, val, 16);
+            } else if (fmt[i] == 'c') {
+                char c = (char)va_arg(ap, int);
+                buf_putc(&pb, c);
+            } else if (fmt[i] == '%') {
+                buf_putc(&pb, '%');
+            }
+        } else {
+            buf_putc(&pb, fmt[i]);
+        }
+    }
+
+    va_end(ap);
+    buf_flush(&pb);
+    return 0;
+}

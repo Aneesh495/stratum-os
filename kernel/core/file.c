@@ -17,11 +17,7 @@ static int64_t console_read(file_t *file, void *buf, size_t count) {
 static int64_t console_write(file_t *file, const void *buf, size_t count) {
     (void)file;
     if (!buf || count == 0) return 0;
-
-    const char *src = (const char *)buf;
-    for (size_t i = 0; i < count; i++) {
-        uart_putc(src[i]);
-    }
+    uart_write((const char *)buf, count);
     return (int64_t)count;
 }
 

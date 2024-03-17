@@ -8,6 +8,7 @@
 void uart_init(void);
 void uart_putc(char c);
 void uart_puts(const char *s);
+void uart_write(const char *buf, size_t count);
 int  uart_getc_nonblocking(void);
 char uart_getc_blocking(void);
 

@@ -65,6 +65,13 @@ void uart_putc(char c) {
     outb(COM1_PORT + UART_THR, (uint8_t)c);
 }
 
+void uart_write(const char *buf, size_t count) {
+    if (!buf || count == 0) return;
+    for (size_t i = 0; i < count; i++) {
+        uart_putc(buf[i]);
+    }
+}
+
 void uart_puts(const char *s) {
     if (!s) return;
     while (*s) {

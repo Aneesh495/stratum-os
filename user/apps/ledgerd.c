@@ -5,7 +5,7 @@ extern void u_printf(const char *fmt, ...);
 extern void *memset(void *s, int c, size_t n);
 extern void *memcpy(void *dest, const void *src, size_t n);
 
-static ledger_block_t g_user_chain[16];
+static ledger_block_t g_user_chain[4];
 static uint32_t       g_user_chain_len = 0;
 
 int ledgerd_init(void) {

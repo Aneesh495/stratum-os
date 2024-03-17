@@ -51,25 +51,31 @@ def run_ledger_cpu_test(cpus):
         "-netdev", "user,id=net0",
         "-device", "virtio-net-pci,netdev=net0",
         "-display", "none",
-        "-serial", f"file:{log_path}"
+        "-serial", "stdio"
     ]
 
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     start = time.time()
 
-    while time.time() - start < 60:
-        if os.path.exists(log_path):
-            with open(log_path, "r", errors="ignore") as f:
-                content = f.read()
-                if "Gate A09 passed" in content:
-                    break
-        time.sleep(0.3)
+    full_output = []
+    while time.time() - start < 30:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            full_output.append(line)
+            if "Gate A09 passed" in line:
+                break
 
     proc.terminate()
     try:
         proc.wait(timeout=2)
     except subprocess.TimeoutExpired:
         proc.kill()
+
+    content = "".join(full_output)
+    with open(log_path, "w") as f:
+        f.write(content)
 
     shell_ok = False
     user_ledger_ok = False

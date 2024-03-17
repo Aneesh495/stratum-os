@@ -12,6 +12,9 @@ dist/
 *.iso
 *.qcow2
 *.bin
+tests/host/test_models
+tests/faults/test_faults
+tools/strata_check
 
 # Private accounting and local state
 .agent-local/

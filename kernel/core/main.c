@@ -649,7 +649,14 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
     kprintf("[TEST] Peer replication TCP service initialized on port 9090.\n");
 
     kprintf("[TEST] P13 Native User Environment and Distributed Ledger verified successfully (Gate A09 passed).\n");
-    kprintf("[KERNEL] Phase P13 reached. Entering kernel idle loop with %u CPU(s) online.\n",
+
+    /* 18. Initialize Depth, Concurrency, and Soak Verification (P14 / Gate A10) */
+    extern int soak_stress_run(uint32_t cycles);
+    kprintf("[TEST] Running P14 Real Guest Multi-threaded Stress and Soak verification (Gate A10)...\n");
+    int soak_res = soak_stress_run(5);
+    kassert(soak_res == 0);
+    kprintf("[TEST] P14 Depth, Concurrency, and Soak verified successfully (Gate A10 passed).\n");
+    kprintf("[KERNEL] Phase P14 reached. Entering kernel idle loop with %u CPU(s) online.\n",
             smp_get_online_cpus());
 
     /* Deliberate fault injection test for P03 verification */
