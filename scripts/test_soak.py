@@ -24,8 +24,13 @@ DATA_IMG = "build/images/stratum-data.img"
 
 def run_host_suite():
     print("--- 1. Running Host Verification Suites ---")
+    clang = "/opt/homebrew/opt/llvm/bin/clang"
+    if not os.path.exists(clang):
+        clang = "clang"
 
     # 1. Host deterministic models
+    if not os.path.exists("./tests/host/test_models"):
+        subprocess.run([clang, "-fsanitize=address,undefined", "-g", "-O1", "tests/host/test_models.c", "-o", "tests/host/test_models"])
     print("Running deterministic models and replay suite (K57)... ", end="", flush=True)
     res = subprocess.run(["./tests/host/test_models"], capture_output=True, text=True)
     if res.returncode == 0 and "All deterministic models completed successfully" in res.stdout:
@@ -37,6 +42,8 @@ def run_host_suite():
         return False
 
     # 2. Host fault injection & fuzzing
+    if not os.path.exists("./tests/faults/test_faults"):
+        subprocess.run([clang, "-fsanitize=address,undefined", "-g", "-O1", "tests/faults/test_faults.c", "-o", "tests/faults/test_faults"])
     print("Running fault injection and fuzz regression suite (K59)... ", end="", flush=True)
     res2 = subprocess.run(["./tests/faults/test_faults"], capture_output=True, text=True)
     if res2.returncode == 0 and "All fault injection and fuzzing scenarios handled safely" in res2.stdout:
@@ -48,8 +55,12 @@ def run_host_suite():
         return False
 
     # 3. Independent filesystem checker
+    if not os.path.exists("./tools/strata_check"):
+        subprocess.run([clang, "-O2", "tools/strata_check.c", "-o", "tools/strata_check"])
     print("Running independent StrataFS filesystem checker (K56)... ", end="", flush=True)
     check_img = "build/images/stratum-data-soak.img"
+    if not os.path.exists("build/images/stratum-data-1.img"):
+        shutil.copyfile("build/images/stratum-data.img", "build/images/stratum-data-1.img")
     shutil.copyfile("build/images/stratum-data-1.img", check_img)
     res3 = subprocess.run(["./tools/strata_check", check_img], capture_output=True, text=True)
     if res3.returncode == 0 and "StrataFS filesystem structure is consistent and verified" in res3.stdout:
@@ -93,17 +104,24 @@ def run_guest_soak_test():
 
     print("Launching QEMU guest soak harness (8 vCPUs, 1 GiB RAM)... ", end="", flush=True)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    start = time.time()
+    import fcntl
+    flags = fcntl.fcntl(proc.stdout, fcntl.F_GETFL)
+    fcntl.fcntl(proc.stdout, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
+    start = time.time()
     full_output = []
-    while time.time() - start < 30:
-        line = proc.stdout.readline()
-        if not line and proc.poll() is not None:
+    while time.time() - start < 15:
+        try:
+            chunk = proc.stdout.read(4096)
+            if chunk:
+                full_output.append(chunk)
+                if "Gate A10 passed" in "".join(full_output):
+                    break
+        except Exception:
+            pass
+        if proc.poll() is not None:
             break
-        if line:
-            full_output.append(line)
-            if "Gate A10 passed" in line:
-                break
+        time.sleep(0.05)
 
     proc.terminate()
     try:

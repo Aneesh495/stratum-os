@@ -17,6 +17,9 @@ OVMF_BIN = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
 BOOT_IMG = "build/images/stratum-boot.img"
 
 
+DATA_IMG = "build/images/stratum-data.img"
+
+
 def run_guest(cpus, mem, timeout=12):
     cmd = [
         QEMU_BIN,
@@ -27,23 +30,35 @@ def run_guest(cpus, mem, timeout=12):
         "-drive", f"if=pflash,format=raw,readonly=on,file={OVMF_BIN}",
         "-drive", f"file={BOOT_IMG},if=none,id=bootdisk,format=raw",
         "-device", "ide-hd,drive=bootdisk,bootindex=1",
+        "-drive", f"file={DATA_IMG},if=none,id=datadisk,format=raw",
+        "-device", "virtio-blk-pci,drive=datadisk",
+        "-netdev", "user,id=net0",
+        "-device", "virtio-net-pci,netdev=net0",
         "-display", "none",
         "-serial", "stdio"
     ]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    import fcntl
+    flags = fcntl.fcntl(proc.stdout, fcntl.F_GETFL)
+    fcntl.fcntl(proc.stdout, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
     start = time.time()
     reached_idle = False
     output = []
 
     while time.time() - start < timeout:
-        line = proc.stdout.readline()
-        if line:
-            output.append(line)
-            if "Entering kernel idle loop" in line:
-                reached_idle = True
-                break
-        elif proc.poll() is not None:
+        try:
+            chunk = proc.stdout.read(4096)
+            if chunk:
+                output.append(chunk)
+                if "Entering kernel idle loop" in "".join(output):
+                    reached_idle = True
+                    break
+        except Exception:
+            pass
+        if proc.poll() is not None:
             break
+        time.sleep(0.05)
 
     proc.terminate()
     try:

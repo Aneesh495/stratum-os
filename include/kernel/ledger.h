@@ -4,8 +4,8 @@
 #include <shared/ledger.h>
 #include <kernel/spinlock.h>
 
-#define LEDGER_MEMPOOL_CAPACITY 256
-#define LEDGER_CHAIN_CAPACITY   1024
+#define LEDGER_MEMPOOL_CAPACITY 128
+#define LEDGER_CHAIN_CAPACITY   128
 
 typedef struct {
     spinlock_t          lock;

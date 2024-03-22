@@ -24,6 +24,7 @@ static void cmd_help(void) {
     u_printf("  netstat             Display network status and interfaces\n");
     u_printf("  ping <ip>           Ping destination gateway or host\n");
     u_printf("  sysinfo             Display kernel memory, CPUs, and uptime\n");
+    u_printf("  bench               Run userland performance microbenchmarks\n");
     u_printf("  ledger <cmd>        Query or submit transactions to ledger\n");
 }
 
@@ -195,6 +196,18 @@ int sh_execute_cmd(const char *cmd_line) {
         cmd_rm(argc > 1 ? argv[1] : NULL);
     } else if (strcmp(argv[0], "sysinfo") == 0) {
         cmd_sysinfo();
+    } else if (strcmp(argv[0], "bench") == 0) {
+        u_printf("[BENCH] Running userland syscall microbenchmark (1,000 getpid calls)...\n");
+        uint64_t start_ms = uptime();
+        for (int i = 0; i < 1000; i++) {
+            volatile int p = getpid();
+            (void)p;
+        }
+        uint64_t end_ms = uptime();
+        uint64_t diff_ms = end_ms - start_ms;
+        if (diff_ms == 0) diff_ms = 1;
+        u_printf("[BENCH] Completed 1,000 syscalls in %lu ms (%lu calls/sec)\n",
+                 diff_ms, (1000UL * 1000UL) / diff_ms);
     } else if (strcmp(argv[0], "netstat") == 0) {
         cmd_netstat();
     } else if (strcmp(argv[0], "ping") == 0) {

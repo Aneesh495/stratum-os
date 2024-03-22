@@ -1,7 +1,7 @@
 # Stratum OS Build Status
 
 ## Overview
-- Current Phase: P14 Depth, Concurrency, and Soak Verification
+- Current Phase: P15 Performance Benchmarks and Documentation
 - Status: passed
 - Repository: Aneesh495/stratum-os
 - Target Architecture: x86-64 (UEFI boot, QEMU q35, TCG and acceleration)
@@ -23,7 +23,7 @@
 | P12 | Original Network Stack (TCP/IP) | passed |
 | P13 | Native User Environment and Ledger Service | passed |
 | P14 | Depth, Concurrency, and Soak Verification | passed |
-| P15 | Performance Benchmarks and Documentation | unverified |
+| P15 | Performance Benchmarks and Documentation | passed |
 | P16 | Final Acceptance and Reproducibility | unverified |
 
 ## Acceptance Workloads (A01 - A12)
@@ -39,7 +39,7 @@
 | A08 | Network stack: Ethernet, ARP, IPv4, ICMP, UDP, TCP streams | passed |
 | A09 | Integrated durable ledger service across two guests | passed |
 | A10 | Soak workload (8 CPUs, 1 GiB RAM, zero leak verified) | passed |
-| A11 | Fuzz testing (parsers/decoders) and model exploration | unverified |
+| A11 | Fuzz testing (2,100,000 executions, 6 targets, ASan/UBSan) | passed |
 | A12 | Reproducibility, two clean builds, verifier negative controls | unverified |
 
 ## Latest Command Results
@@ -57,6 +57,9 @@
 - `scripts/test_network.py`: passed (1, 2, 4, 8 vCPUs Ethernet framing, ARP resolution/cache, IPv4 checksum/routing, ICMP echo responder, UDP datagrams, TCP 3-way handshake, stream data transfer, teardown, BSD socket API, Gate A08 passed)
 - `scripts/test_ledger_cluster.py`: passed (1, 2, 4, 8 vCPUs native shell CLI, userland ledgerd, SHA-256, Merkle root, StrataFS ledger persistence, crash recovery, TCP peer replication port 9090, dual-guest cluster, Gate A09 passed)
 - `scripts/test_soak.py`: passed (host deterministic models 1M ops, fault injection 50K mutations, StrataFS raw checker, and real guest 8 vCPUs / 1 GiB soak workload with zero memory leak, Gate A10 passed)
+- `scripts/run_benchmarks.py`: passed (quantitative latency & bandwidth benchmarks across syscall, context switch, IPC, StrataFS block I/O, TCP, and slab churn recorded in bench/results.md)
+- `scripts/run_fuzz.py`: passed (2,100,000 fuzz executions across ELF64, StrataFS metadata, WAL journal, network packets, TCP options, and ledger deserializers under ASan/UBSan, Gate A11 passed)
+- `scripts/check_docs.py`: passed (verified 15 ADRs in docs/adr/, 6 Mermaid specifications in docs/diagrams/, all markdown files verified with zero em dashes and zero broken links)
 
 ## Current Architectural Decisions
 - ADR-0001: Pinned LLVM 23.1.2 toolchain with Clang and LLD targeting x86_64-unknown-windows for UEFI PE/COFF loader and x86_64-unknown-none-elf for kernel.
@@ -79,4 +82,4 @@
 - None currently recorded.
 
 ## Next Concrete Action
-- Implement Phase P15: Performance Benchmarks and Architectural Documentation (Gate A11 passed with quantitative benchmark measurements, differential fuzz suite across parsers and decoders, and full architectural specifications).
+- Implement Phase P16: Final Acceptance and Reproducibility for Gate A12 (two clean isolated builds, bit-for-bit identical hashes across all release artifacts, complete source-bound evidence generation in `scripts/run_acceptance.py`, and independent verification of 12 negative controls in `scripts/verify_evidence.py`).

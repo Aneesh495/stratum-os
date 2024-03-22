@@ -15,6 +15,10 @@ dist/
 tests/host/test_models
 tests/faults/test_faults
 tools/strata_check
+build/bench_suite
+build/test_fuzz
+*.dSYM
+*.dSYM/
 
 # Private accounting and local state
 .agent-local/

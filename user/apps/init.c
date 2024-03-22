@@ -173,6 +173,7 @@ int main(int argc, char **argv) {
     sh_execute_cmd("help");
     sh_execute_cmd("echo [SHELL] Stratum Interactive Shell CLI operational");
     sh_execute_cmd("sysinfo");
+    sh_execute_cmd("bench");
     sh_execute_cmd("netstat");
     sh_execute_cmd("ping 10.0.2.2");
 
