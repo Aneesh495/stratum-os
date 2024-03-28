@@ -16,7 +16,7 @@ import sys
 import time
 
 QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
-OVMF_BIN = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
+OVMF_BIN = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
 BOOT_IMG = "build/images/stratum-boot.img"
 
 
@@ -36,61 +36,43 @@ def run_ipc_test(cpus):
         "-drive", f"file={BOOT_IMG},if=none,id=bootdisk,format=raw",
         "-device", "ide-hd,drive=bootdisk,bootindex=1",
         "-display", "none",
-        "-serial", f"file:{log_path}"
+        "-serial", "stdio"
     ]
 
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     start = time.time()
-    pipe_created = False
-    fork_ok = False
-    cow_ok = False
-    child_write_ok = False
-    poll_ok = False
-    read_msg_ok = False
-    pipe_eof_ok = False
-    waitpid_ok = False
-    dup2_ok = False
-    exit_42_ok = False
-    p08_pass_ok = False
 
-    while time.time() - start < 45:
-        if os.path.exists(log_path):
-            with open(log_path, "r", errors="ignore") as f:
-                content = f.read()
-                if "Anonymous pipe created successfully" in content:
-                    pipe_created = True
-                if "Forking child process" in content:
-                    fork_ok = True
-                if "Copy-On-Write memory isolation verified in parent" in content:
-                    cow_ok = True
-                if "Child process completed IPC write, exiting with status 77" in content:
-                    child_write_ok = True
-                if "poll() indicated POLLIN readiness successfully" in content:
-                    poll_ok = True
-                if "Read message from child via pipe: stratum_pipe_ipc_message" in content:
-                    read_msg_ok = True
-                if "Pipe EOF detection verified upon writer close" in content:
-                    pipe_eof_ok = True
-                if "Child process reaped successfully with status 77" in content:
-                    waitpid_ok = True
-                if "dup2() verified successfully" in content:
-                    dup2_ok = True
-                if "code 42" in content:
-                    exit_42_ok = True
-                if "P08 Processes, Threads, and IPC gates verified" in content:
-                    p08_pass_ok = True
-
-                if (pipe_created and fork_ok and cow_ok and child_write_ok and
-                    poll_ok and read_msg_ok and pipe_eof_ok and waitpid_ok and
-                    dup2_ok and exit_42_ok and p08_pass_ok):
-                    break
-        time.sleep(0.2)
+    full_output = []
+    while time.time() - start < 30:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            full_output.append(line)
+            if "P08 Processes, Threads, and IPC gates verified" in line:
+                break
 
     proc.terminate()
     try:
         proc.wait(timeout=2)
     except subprocess.TimeoutExpired:
         proc.kill()
+
+    content = "".join(full_output)
+    with open(log_path, "w") as f:
+        f.write(content)
+
+    pipe_created = "Anonymous pipe created successfully" in content
+    fork_ok = "Forking child process" in content
+    cow_ok = "Copy-On-Write memory isolation verified in parent" in content
+    child_write_ok = "Child process completed IPC write, exiting with status 77" in content
+    poll_ok = "poll() indicated POLLIN readiness successfully" in content
+    read_msg_ok = "Read message from child via pipe: stratum_pipe_ipc_message" in content
+    pipe_eof_ok = "Pipe EOF detection verified upon writer close" in content
+    waitpid_ok = "Child process reaped successfully with status 77" in content
+    dup2_ok = "dup2() verified successfully" in content
+    exit_42_ok = "code 42" in content
+    p08_pass_ok = "P08 Processes, Threads, and IPC gates verified" in content
 
     all_passed = (pipe_created and fork_ok and cow_ok and child_write_ok and
                   poll_ok and read_msg_ok and pipe_eof_ok and waitpid_ok and

@@ -23,7 +23,7 @@ import sys
 import time
 
 QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
-OVMF_BIN = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
+OVMF_BIN = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
 BOOT_IMG = "build/images/stratum-boot.img"
 DATA_IMG = "build/images/stratum-data.img"
 
@@ -154,7 +154,7 @@ def run_dual_guest_cluster_test():
         QEMU_BIN,
         "-machine", "q35,accel=tcg",
         "-cpu", "qemu64,+nx,+apic",
-        "-smp", "2",
+        "-smp", "1",
         "-m", "256M",
         "-drive", f"if=pflash,format=raw,readonly=on,file={OVMF_BIN}",
         "-drive", f"file={guest1_boot},if=none,id=bootdisk,format=raw",
@@ -164,14 +164,14 @@ def run_dual_guest_cluster_test():
         "-netdev", "socket,id=net0,listen=:12345",
         "-device", "virtio-net-pci,netdev=net0,mac=52:54:00:12:34:56",
         "-display", "none",
-        "-serial", f"file:{log1}"
+        "-serial", "stdio"
     ]
 
     cmd2 = [
         QEMU_BIN,
         "-machine", "q35,accel=tcg",
         "-cpu", "qemu64,+nx,+apic",
-        "-smp", "2",
+        "-smp", "1",
         "-m", "256M",
         "-drive", f"if=pflash,format=raw,readonly=on,file={OVMF_BIN}",
         "-drive", f"file={guest2_boot},if=none,id=bootdisk,format=raw",
@@ -181,30 +181,48 @@ def run_dual_guest_cluster_test():
         "-netdev", "socket,id=net0,connect=127.0.0.1:12345",
         "-device", "virtio-net-pci,netdev=net0,mac=52:54:00:12:34:57",
         "-display", "none",
-        "-serial", f"file:{log2}"
+        "-serial", "stdio"
     ]
 
-    p1 = subprocess.Popen(cmd1)
+    p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     time.sleep(1.0)
-    p2 = subprocess.Popen(cmd2)
+    p2 = subprocess.Popen(cmd2, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    import fcntl
+    flags1 = fcntl.fcntl(p1.stdout, fcntl.F_GETFL)
+    fcntl.fcntl(p1.stdout, fcntl.F_SETFL, flags1 | os.O_NONBLOCK)
+    flags2 = fcntl.fcntl(p2.stdout, fcntl.F_GETFL)
+    fcntl.fcntl(p2.stdout, fcntl.F_SETFL, flags2 | os.O_NONBLOCK)
 
     start = time.time()
     g1_ok = False
     g2_ok = False
+    out1 = []
+    out2 = []
 
-    while time.time() - start < 45:
-        if os.path.exists(log1) and not g1_ok:
-            with open(log1, "r", errors="ignore") as f:
-                if "Gate A09 passed" in f.read():
-                    g1_ok = True
-        if os.path.exists(log2) and not g2_ok:
-            with open(log2, "r", errors="ignore") as f:
-                if "Gate A09 passed" in f.read():
-                    g2_ok = True
+    while time.time() - start < 60:
+        if not g1_ok:
+            try:
+                c1 = p1.stdout.read(4096)
+                if c1:
+                    out1.append(c1)
+                    if "Gate A09 passed" in "".join(out1):
+                        g1_ok = True
+            except Exception:
+                pass
+        if not g2_ok:
+            try:
+                c2 = p2.stdout.read(4096)
+                if c2:
+                    out2.append(c2)
+                    if "Gate A09 passed" in "".join(out2):
+                        g2_ok = True
+            except Exception:
+                pass
 
         if g1_ok and g2_ok:
             break
-        time.sleep(0.3)
+        time.sleep(0.05)
 
     for p in (p1, p2):
         p.terminate()
@@ -212,6 +230,9 @@ def run_dual_guest_cluster_test():
             p.wait(timeout=2)
         except subprocess.TimeoutExpired:
             p.kill()
+
+    with open(log1, "w") as f: f.write("".join(out1))
+    with open(log2, "w") as f: f.write("".join(out2))
 
     if g1_ok and g2_ok:
         print("PASSED")

@@ -20,8 +20,9 @@ build/test_fuzz
 *.dSYM
 *.dSYM/
 
-# Private accounting and local state
-.agent-local/
+# Ephemeral acceptance builds
+evidence/build_A/
+evidence/build_B/
 .gdb_history
 vgcore.*
 

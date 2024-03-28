@@ -13,14 +13,16 @@ import tempfile
 import time
 
 QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
-OVMF_BIN = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
+OVMF_BIN = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
 BOOT_IMG = "build/images/stratum-boot.img"
 
 
 DATA_IMG = "build/images/stratum-data.img"
 
 
-def run_guest(cpus, mem, timeout=12):
+def run_guest(cpus, mem, timeout=45):
+    fresh_data = f"build/images/stratum-data-boot-{cpus}-{mem}.img"
+    shutil.copyfile(DATA_IMG, fresh_data)
     cmd = [
         QEMU_BIN,
         "-machine", "q35,accel=tcg",
@@ -30,7 +32,7 @@ def run_guest(cpus, mem, timeout=12):
         "-drive", f"if=pflash,format=raw,readonly=on,file={OVMF_BIN}",
         "-drive", f"file={BOOT_IMG},if=none,id=bootdisk,format=raw",
         "-device", "ide-hd,drive=bootdisk,bootindex=1",
-        "-drive", f"file={DATA_IMG},if=none,id=datadisk,format=raw",
+        "-drive", f"file={fresh_data},if=none,id=datadisk,format=raw",
         "-device", "virtio-blk-pci,drive=datadisk",
         "-netdev", "user,id=net0",
         "-device", "virtio-net-pci,netdev=net0",

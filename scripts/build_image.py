@@ -13,9 +13,13 @@ import sys
 BOOT_IMAGE_SIZE_MIB = 64
 DATA_IMAGE_SIZE_MIB = 64
 
+os.environ["SOURCE_DATE_EPOCH"] = "1700000000"
+
 
 def run_cmd(cmd):
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    env = os.environ.copy()
+    env["SOURCE_DATE_EPOCH"] = "1700000000"
+    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if res.returncode != 0:
         print(f"Command failed: {' '.join(cmd)}")
         print(f"stdout: {res.stdout}")
@@ -70,28 +74,37 @@ def build_boot_disk(out_path, loader_path, kernel_path, initramfs_path):
 
     part_target = f"{out_path}@@1M"
 
-    # 3. Format as FAT32 ESP
-    run_cmd([mformat, "-i", part_target, "-F", "::"])
+    # 3. Format as FAT32 ESP with deterministic volume serial
+    run_cmd([mformat, "-i", part_target, "-F", "-N", "12345678", "::"])
 
     # 4. Create EFI directories
     run_cmd([mmd, "-i", part_target, "::/EFI"])
     run_cmd([mmd, "-i", part_target, "::/EFI/BOOT"])
 
+    # Deterministic file timestamping (epoch 1700000000)
+    fixed_time = int(os.environ.get("SOURCE_DATE_EPOCH", 1700000000))
+    if os.path.exists(loader_path):
+        os.utime(loader_path, (fixed_time, fixed_time))
+    if os.path.exists(kernel_path):
+        os.utime(kernel_path, (fixed_time, fixed_time))
+
     # 5. Copy bootloader and kernel
-    run_cmd([mcopy, "-i", part_target, loader_path, "::/EFI/BOOT/BOOTX64.EFI"])
-    run_cmd([mcopy, "-i", part_target, kernel_path, "::/stratum.elf"])
+    run_cmd([mcopy, "-m", "-i", part_target, loader_path, "::/EFI/BOOT/BOOTX64.EFI"])
+    run_cmd([mcopy, "-m", "-i", part_target, kernel_path, "::/stratum.elf"])
 
     # 6. Add startup.nsh fallback for UEFI shell profiles
     import tempfile
     with tempfile.NamedTemporaryFile("w", delete=False) as tf:
         tf.write("\\EFI\\BOOT\\BOOTX64.EFI\r\n")
         tf_name = tf.name
-    run_cmd([mcopy, "-o", "-i", part_target, tf_name, "::/startup.nsh"])
+    os.utime(tf_name, (fixed_time, fixed_time))
+    run_cmd([mcopy, "-m", "-o", "-i", part_target, tf_name, "::/startup.nsh"])
     os.remove(tf_name)
 
-    # 6. Copy initramfs if present
+    # 7. Copy initramfs if present
     if initramfs_path and os.path.exists(initramfs_path):
-        run_cmd([mcopy, "-i", part_target, initramfs_path, "::/initramfs.cpio"])
+        os.utime(initramfs_path, (fixed_time, fixed_time))
+        run_cmd([mcopy, "-m", "-i", part_target, initramfs_path, "::/initramfs.cpio"])
 
     print(f"[OK] Boot image created: {out_path} ({BOOT_IMAGE_SIZE_MIB} MiB partitioned MBR/ESP)")
     print(f"     SHA-256: {sha256_file(out_path)}")

@@ -2,7 +2,7 @@
 """
 scripts/scope_check.py - Reproducible line counting for Stratum OS.
 Counts non-blank, non-comment authored production code in kernel/ and drivers.
-Outputs private accounting ledger to .agent-local/scope_ledger.json.
+Outputs private accounting ledger to build/scope_ledger.json.
 """
 
 import json
@@ -103,8 +103,8 @@ def main():
         "target_met": total_lines >= 10000,
     }
 
-    os.makedirs(".agent-local", exist_ok=True)
-    ledger_path = os.path.join(".agent-local", "scope_ledger.json")
+    os.makedirs("build", exist_ok=True)
+    ledger_path = os.path.join("build", "scope_ledger.json")
     with open(ledger_path, "w", encoding="utf-8") as f:
         json.dump(ledger, f, indent=2)
 

@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-OVMF_DEFAULT = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
+OVMF_DEFAULT = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
 QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
 
 

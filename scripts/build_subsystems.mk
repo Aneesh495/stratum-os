@@ -92,7 +92,7 @@ $(BUILD_DIR)/boot/uefi/%.o: boot/uefi/%.c
 
 $(BUILD_DIR)/BOOTX64.EFI: $(UEFI_OBJS)
 	@mkdir -p $(dir $@)
-	$(LLD) -flavor link /subsystem:efi_application /entry:EfiMain /dynamicbase:no /nodefaultlib /out:$@ $^
+	$(LLD) -flavor link /subsystem:efi_application /entry:EfiMain /dynamicbase:no /nodefaultlib /Brepro /timestamp:1700000000 /out:$@ $^
 
 # Build Kernel ELF
 build-kernel: $(BUILD_DIR)/stratum.elf
@@ -146,8 +146,6 @@ $(BUILD_DIR)/stratum.elf: $(BUILD_DIR)/user_init.elf $(KERNEL_OBJS) kernel/arch/
 build-initramfs: $(BUILD_DIR)/initramfs.cpio
 
 $(BUILD_DIR)/initramfs.cpio: $(BUILD_DIR)/user_init.elf
-	@mkdir -p $(BUILD_DIR)/initramfs_root/bin
-	@echo "Stratum OS Initramfs" > $(BUILD_DIR)/initramfs_root/hello.txt
-	@cp $(BUILD_DIR)/user_init.elf $(BUILD_DIR)/initramfs_root/bin/init
-	@cd $(BUILD_DIR)/initramfs_root && find . | cpio -o -H newc > ../initramfs.cpio 2>/dev/null || touch $@
+	@mkdir -p $(BUILD_DIR)
+	@python3 scripts/build_cpio.py $< $@
 

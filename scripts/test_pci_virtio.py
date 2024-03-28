@@ -15,7 +15,7 @@ import sys
 import time
 
 QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
-OVMF_BIN = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
+OVMF_BIN = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
 BOOT_IMG = "build/images/stratum-boot.img"
 DATA_IMG = "build/images/stratum-data.img"
 
@@ -40,46 +40,38 @@ def run_pci_virtio_test(cpus):
         "-netdev", "user,id=net0",
         "-device", "virtio-net-pci,netdev=net0",
         "-display", "none",
-        "-serial", f"file:{log_path}"
+        "-serial", "stdio"
     ]
 
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     start = time.time()
 
-    pci_enum_ok = False
-    blk_init_ok = False
-    blk_io_ok = False
-    net_init_ok = False
-    net_tx_ok = False
-    p09_pass_ok = False
-
-    while time.time() - start < 45:
-        if os.path.exists(log_path):
-            with open(log_path, "r", errors="ignore") as f:
-                content = f.read()
-                if "Scanning PCI bus hierarchy" in content and "Enumeration complete" in content:
-                    pci_enum_ok = True
-                if "Block device initialized: capacity=" in content:
-                    blk_init_ok = True
-                if "Virtio-blk synchronous read, write, flush, and queue index cycling verified" in content:
-                    blk_io_ok = True
-                if "Network device initialized: MAC=" in content:
-                    net_init_ok = True
-                if "Virtio-net MAC identification and TX frame transmission verified" in content:
-                    net_tx_ok = True
-                if "P09 Virtio block and network hardware I/O verified successfully (Gate A06 passed)" in content:
-                    p09_pass_ok = True
-
-                if (pci_enum_ok and blk_init_ok and blk_io_ok and
-                    net_init_ok and net_tx_ok and p09_pass_ok):
-                    break
-        time.sleep(0.2)
+    full_output = []
+    while time.time() - start < 30:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            full_output.append(line)
+            if "Gate A06 passed" in line:
+                break
 
     proc.terminate()
     try:
         proc.wait(timeout=2)
     except subprocess.TimeoutExpired:
         proc.kill()
+
+    content = "".join(full_output)
+    with open(log_path, "w") as f:
+        f.write(content)
+
+    pci_enum_ok = "Scanning PCI bus hierarchy" in content and "Enumeration complete" in content
+    blk_init_ok = "Block device initialized: capacity=" in content
+    blk_io_ok = "Virtio-blk synchronous read, write, flush, and queue index cycling verified" in content
+    net_init_ok = "Network device initialized: MAC=" in content
+    net_tx_ok = "Virtio-net MAC identification and TX frame transmission verified" in content
+    p09_pass_ok = "Gate A06 passed" in content
 
     all_passed = (pci_enum_ok and blk_init_ok and blk_io_ok and
                   net_init_ok and net_tx_ok and p09_pass_ok)

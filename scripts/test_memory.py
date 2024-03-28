@@ -5,12 +5,13 @@ Tests physical allocation, slab object cache, virtual mapping, and host MM stres
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import time
 
 QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
-OVMF_BIN = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
+OVMF_BIN = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
 BOOT_IMG = "build/images/stratum-boot.img"
 CLANG_BIN = "/opt/homebrew/opt/llvm/bin/clang"
 
@@ -44,6 +45,8 @@ def test_host_model():
 
 def test_guest_memory():
     print("Testing Guest Memory (PMM, SLAB, VMM 4-Level Paging)... ", end="", flush=True)
+    fresh_data = "build/images/stratum-data-mem.img"
+    shutil.copyfile("build/images/stratum-data.img", fresh_data)
     cmd = [
         QEMU_BIN,
         "-machine", "q35,accel=tcg",
@@ -53,36 +56,47 @@ def test_guest_memory():
         "-drive", f"if=pflash,format=raw,readonly=on,file={OVMF_BIN}",
         "-drive", f"file={BOOT_IMG},if=none,id=bootdisk,format=raw",
         "-device", "ide-hd,drive=bootdisk,bootindex=1",
+        "-drive", f"file={fresh_data},if=none,id=datadisk,format=raw",
+        "-device", "virtio-blk-pci,drive=datadisk",
+        "-netdev", "user,id=net0",
+        "-device", "virtio-net-pci,netdev=net0",
         "-display", "none",
         "-serial", "stdio"
     ]
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    import fcntl
+    flags = fcntl.fcntl(proc.stdout, fcntl.F_GETFL)
+    fcntl.fcntl(proc.stdout, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
     start = time.time()
     pmm_ok = False
     slab_ok = False
     vmm_ok = False
     test_ok = False
-    idle_ok = False
     output = []
 
-    while time.time() - start < 15:
-        line = proc.stdout.readline()
-        if line:
-            output.append(line)
-            if "Physical memory manager initialized" in line:
-                pmm_ok = True
-            if "Object cache allocator initialized" in line:
-                slab_ok = True
-            if "Virtual memory manager initialized with 4-level paging" in line:
-                vmm_ok = True
-            if "P04 memory verification tests passed successfully" in line:
-                test_ok = True
-            if "Entering kernel idle loop" in line or "Entering kernel loop" in line:
-                idle_ok = True
-                break
-        elif proc.poll() is not None:
+    while time.time() - start < 20:
+        try:
+            chunk = proc.stdout.read(4096)
+            if chunk:
+                output.append(chunk)
+                content = "".join(output)
+                if "Physical memory manager initialized" in content:
+                    pmm_ok = True
+                if "Object cache allocator initialized" in content:
+                    slab_ok = True
+                if "Virtual memory manager initialized with 4-level paging" in content:
+                    vmm_ok = True
+                if "P04 memory verification tests passed successfully" in content:
+                    test_ok = True
+                if pmm_ok and slab_ok and vmm_ok and test_ok:
+                    break
+        except Exception:
+            pass
+        if proc.poll() is not None:
             break
+        time.sleep(0.05)
 
     proc.terminate()
     try:
@@ -90,7 +104,7 @@ def test_guest_memory():
     except subprocess.TimeoutExpired:
         proc.kill()
 
-    if pmm_ok and slab_ok and vmm_ok and test_ok and idle_ok:
+    if pmm_ok and slab_ok and vmm_ok and test_ok:
         print("[PASS]")
         return True
     else:

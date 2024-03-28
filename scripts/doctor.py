@@ -20,9 +20,9 @@ REQUIRED_TOOLS = [
 ]
 
 OVMF_PATHS = [
-    "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd",
     "/opt/homebrew/share/qemu/edk2-x86_64-code.fd",
     "/usr/share/OVMF/OVMF_CODE.fd",
+    "/usr/share/qemu/edk2-x86_64-code.fd",
 ]
 
 EXPECTED_OVMF_SHA256 = "33090cc07675baa5190d9f1e84bf5176b33bcbfa9bacac522961150cdb6dbb2a"

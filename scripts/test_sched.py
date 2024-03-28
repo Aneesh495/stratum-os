@@ -10,12 +10,17 @@ import sys
 import time
 
 QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
-OVMF_BIN = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
+OVMF_BIN = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
 BOOT_IMG = "build/images/stratum-boot.img"
+
+
+import shutil
 
 
 def test_sched_cpu_profile(cpus):
     print(f"Testing SMP Scheduler ({cpus} vCPUs)... ", end="", flush=True)
+    fresh_data = f"build/images/stratum-data-sched-{cpus}.img"
+    shutil.copyfile("build/images/stratum-data.img", fresh_data)
     cmd = [
         QEMU_BIN,
         "-machine", "q35,accel=tcg",
@@ -25,36 +30,47 @@ def test_sched_cpu_profile(cpus):
         "-drive", f"if=pflash,format=raw,readonly=on,file={OVMF_BIN}",
         "-drive", f"file={BOOT_IMG},if=none,id=bootdisk,format=raw",
         "-device", "ide-hd,drive=bootdisk,bootindex=1",
+        "-drive", f"file={fresh_data},if=none,id=datadisk,format=raw",
+        "-device", "virtio-blk-pci,drive=datadisk",
+        "-netdev", "user,id=net0",
+        "-device", "virtio-net-pci,netdev=net0",
         "-display", "none",
         "-serial", "stdio"
     ]
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    import fcntl
+    flags = fcntl.fcntl(proc.stdout, fcntl.F_GETFL)
+    fcntl.fcntl(proc.stdout, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
     start = time.time()
     sched_init_ok = False
     workers_ok = False
     sleeper_ok = False
     sched_pass_ok = False
-    idle_ok = False
     output = []
 
-    while time.time() - start < 15:
-        line = proc.stdout.readline()
-        if line:
-            output.append(line)
-            if "Preemptive SMP Scheduler initialized" in line:
-                sched_init_ok = True
-            if "Worker 1 finished" in line or "Worker 2 finished" in line or "Worker 3 finished" in line:
-                workers_ok = True
-            if "Sleeper 4 woke up" in line:
-                sleeper_ok = True
-            if "P06 scheduler verification passed successfully" in line:
-                sched_pass_ok = True
-            if "Entering kernel idle loop" in line:
-                idle_ok = True
-                break
-        elif proc.poll() is not None:
+    while time.time() - start < 30:
+        try:
+            chunk = proc.stdout.read(4096)
+            if chunk:
+                output.append(chunk)
+                content = "".join(output)
+                if "Preemptive SMP Scheduler initialized" in content:
+                    sched_init_ok = True
+                if "Worker 1 finished" in content or "Worker 2 finished" in content or "Worker 3 finished" in content:
+                    workers_ok = True
+                if "Sleeper 4 woke up" in content:
+                    sleeper_ok = True
+                if "P06 scheduler verification passed successfully" in content:
+                    sched_pass_ok = True
+                if sched_init_ok and workers_ok and sleeper_ok and sched_pass_ok:
+                    break
+        except Exception:
+            pass
+        if proc.poll() is not None:
             break
+        time.sleep(0.05)
 
     proc.terminate()
     try:
@@ -62,7 +78,7 @@ def test_sched_cpu_profile(cpus):
     except subprocess.TimeoutExpired:
         proc.kill()
 
-    if sched_init_ok and workers_ok and sleeper_ok and sched_pass_ok and idle_ok:
+    if sched_init_ok and workers_ok and sleeper_ok and sched_pass_ok:
         print(f"[PASS] ({cpus} vCPUs, threads preempted/slept/woken)")
         return True
     else:

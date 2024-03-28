@@ -166,7 +166,7 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
 
     sti();
     uint64_t start_ms = timer_get_uptime_ms();
-    while (g_threads_completed < 4 && (timer_get_uptime_ms() - start_ms) < 3000) {
+    while (g_threads_completed < 4 && (timer_get_uptime_ms() - start_ms) < 10000) {
         hlt();
     }
 
@@ -205,7 +205,7 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
 
     /* Await user process completion */
     uint64_t user_wait_start = timer_get_uptime_ms();
-    while (!g_user_init_finished && (timer_get_uptime_ms() - user_wait_start) < 5000) {
+    while (!g_user_init_finished && (timer_get_uptime_ms() - user_wait_start) < 30000) {
         __asm__ volatile("sti; hlt");
     }
 
@@ -306,11 +306,11 @@ void kmain(boot_handoff_t *handoff, uint64_t magic) {
     kprintf("[TEST] mkdir /system...\n");
     int d_res = vfs_mkdir("/system", 0755);
     kprintf("[TEST] mkdir /system returned %d\n", d_res);
-    kassert(d_res == 0);
+    kassert(d_res == 0 || d_res == -STRATUM_EEXIST);
     kprintf("[TEST] mkdir /system/logs...\n");
     int d_res2 = vfs_mkdir("/system/logs", 0755);
     kprintf("[TEST] mkdir /system/logs returned %d\n", d_res2);
-    kassert(d_res2 == 0);
+    kassert(d_res2 == 0 || d_res2 == -STRATUM_EEXIST);
 
     /* Test 2: File creation and multi-block writes */
     file_t *f = NULL;

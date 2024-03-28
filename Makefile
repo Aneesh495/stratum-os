@@ -2,6 +2,7 @@
 # Strict standalone cross-compilation on macOS / Linux
 
 SHELL := /bin/bash
+export SOURCE_DATE_EPOCH := 1700000000
 
 # Pinned Toolchain paths (with environment overrides)
 LLVM_PREFIX ?= /opt/homebrew/opt/llvm
@@ -14,7 +15,7 @@ MFORMAT     ?= $(if $(wildcard /opt/homebrew/bin/mformat),/opt/homebrew/bin/mfor
 MCOPY       ?= $(if $(wildcard /opt/homebrew/bin/mcopy),/opt/homebrew/bin/mcopy,mcopy)
 MMD         ?= $(if $(wildcard /opt/homebrew/bin/mmd),/opt/homebrew/bin/mmd,mmd)
 QEMU        ?= $(if $(wildcard /opt/homebrew/bin/qemu-system-x86_64),/opt/homebrew/bin/qemu-system-x86_64,qemu-system-x86_64)
-OVMF        ?= /opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd
+OVMF        ?= $(firstword $(wildcard /opt/homebrew/share/qemu/edk2-x86_64-code.fd /usr/share/OVMF/OVMF_CODE.fd /usr/share/qemu/edk2-x86_64-code.fd))
 PYTHON      ?= python3
 
 BUILD_DIR   := build

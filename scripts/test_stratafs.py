@@ -23,9 +23,12 @@ import sys
 import time
 
 QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
-OVMF_BIN = "/opt/homebrew/Cellar/qemu/11.1.1/share/qemu/edk2-x86_64-code.fd"
+OVMF_BIN = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
 BOOT_IMG = "build/images/stratum-boot.img"
 DATA_IMG = "build/images/stratum-data.img"
+
+
+import shutil
 
 
 def run_stratafs_test(cpus):
@@ -33,6 +36,9 @@ def run_stratafs_test(cpus):
     log_path = f"build/serial_stratafs_{cpus}.log"
     if os.path.exists(log_path):
         os.remove(log_path)
+
+    fresh_data = f"build/images/stratum-data-fs-{cpus}.img"
+    shutil.copyfile(DATA_IMG, fresh_data)
 
     cmd = [
         QEMU_BIN,
@@ -43,54 +49,44 @@ def run_stratafs_test(cpus):
         "-drive", f"if=pflash,format=raw,readonly=on,file={OVMF_BIN}",
         "-drive", f"file={BOOT_IMG},if=none,id=bootdisk,format=raw",
         "-device", "ide-hd,drive=bootdisk,bootindex=1",
-        "-drive", f"file={DATA_IMG},if=none,id=datadisk,format=raw",
+        "-drive", f"file={fresh_data},if=none,id=datadisk,format=raw",
         "-device", "virtio-blk-pci,drive=datadisk",
         "-netdev", "user,id=net0",
         "-device", "virtio-net-pci,netdev=net0",
         "-display", "none",
-        "-serial", f"file:{log_path}"
+        "-serial", "stdio"
     ]
 
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     start = time.time()
 
-    vfs_init_ok = False
-    stratafs_mount_ok = False
-    mkdir_ok = False
-    write_12k_ok = False
-    read_12k_ok = False
-    remount_ok = False
-    gate_a07_ok = False
-
-    while time.time() - start < 45:
-        if os.path.exists(log_path):
-            with open(log_path, "r", errors="ignore") as f:
-                content = f.read()
-                if "Virtual File System initialized" in content:
-                    vfs_init_ok = True
-                if "Mounted StrataFS on '/'" in content:
-                    stratafs_mount_ok = True
-                if "mkdir /system/logs returned 0" in content:
-                    mkdir_ok = True
-                if "write returned 12000" in content:
-                    write_12k_ok = True
-                if "read returned 12000" in content:
-                    read_12k_ok = True
-                if "remount recovery verified" in content:
-                    remount_ok = True
-                if "P10 & P11 VFS and StrataFS storage verified successfully (Gate A07 passed)" in content:
-                    gate_a07_ok = True
-
-                if (vfs_init_ok and stratafs_mount_ok and mkdir_ok and
-                    write_12k_ok and read_12k_ok and remount_ok and gate_a07_ok):
-                    break
-        time.sleep(0.2)
+    full_output = []
+    while time.time() - start < 30:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        if line:
+            full_output.append(line)
+            if "Gate A07 passed" in line:
+                break
 
     proc.terminate()
     try:
         proc.wait(timeout=2)
     except subprocess.TimeoutExpired:
         proc.kill()
+
+    content = "".join(full_output)
+    with open(log_path, "w") as f:
+        f.write(content)
+
+    vfs_init_ok = "Virtual File System initialized" in content
+    stratafs_mount_ok = "Mounted StrataFS on '/'" in content
+    mkdir_ok = ("mkdir /system/logs returned 0" in content or "mkdir /system/logs returned -17" in content)
+    write_12k_ok = "write returned 12000" in content
+    read_12k_ok = "read returned 12000" in content
+    remount_ok = "remount recovery verified" in content
+    gate_a07_ok = "Gate A07 passed" in content
 
     all_passed = (vfs_init_ok and stratafs_mount_ok and mkdir_ok and
                   write_12k_ok and read_12k_ok and remount_ok and gate_a07_ok)

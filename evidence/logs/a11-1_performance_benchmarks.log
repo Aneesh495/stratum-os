@@ -1,23 +1,5 @@
-# Stratum OS Performance Benchmark Results
-
-Generated: 2024-03-28 04:30:00 UTC
-Platform: Darwin x86-64 / ARM64 execution environment
-Profile: Clang -O3 optimized native host simulation
-
-## Benchmark Executive Summary
-
-| Subsystem / Metric | Test Workload | Measured Throughput / Latency | Status |
-| --- | --- | --- | --- |
-| Syscall Boundary Latency | 5,000,000 user/kernel roundtrips | < 1.0 ns / 5.2 M calls/sec | PASSED |
-| Scheduler Context Switch | 2,000,000 SysV register switches | < 1.5 ns / 3.8 M switches/sec | PASSED |
-| IPC Pipe Bandwidth | 256 MiB in 64 KiB frames | > 15,000 MiB/sec | PASSED |
-| StrataFS 4 KiB Block I/O | 65,536 blocks (256 MiB) | > 200,000 IOPS / > 800 MiB/sec | PASSED |
-| TCP Stream Processing | 1,000,000 MSS-1460 packets | > 5.0 M pkts/sec / > 50 Gbps | PASSED |
-| Slab Allocator Churn | 2,000,000 alloc/free pairs | > 20.0 M ops/sec | PASSED |
-
-## Raw Benchmark Output
-
-```text
+=== Compiling Stratum Performance Benchmark Suite ===
+=== Executing Stratum Performance Benchmark Suite ===
 ===============================================================
   Stratum Operating System - Quantitative Performance Benchmark
 ===============================================================
@@ -57,8 +39,6 @@ Profile: Clang -O3 optimized native host simulation
 ===============================================================
   All 6 Performance Benchmarks Completed Successfully.
 ===============================================================
-```
 
-## Methodology and Reproducibility
-All benchmarks measure steady-state execution time using high-resolution monotonic clocks (`clock_gettime(CLOCK_MONOTONIC)` and hardware cycle counters).
-Resource usage remains strictly bounded with zero dynamic heap leakage throughout all runs.
+=== Generating Benchmark Report in /Users/aneeshkrishna/Downloads/stratum/bench/results.md ===
+[OK] Benchmark report successfully written to /Users/aneeshkrishna/Downloads/stratum/bench/results.md
